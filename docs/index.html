@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pokemon Bulk Deal Scanner - Live Demo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root{--bg:#0f1117;--surface:#1a1d27;--surface2:#232635;--border:#2e3347;--text:#e8eaf6;--text-muted:#8892b0;--accent:#7c6af7;--accent2:#5e81f4;--green:#10b981;--green-bg:rgba(16,185,129,.12);--yellow:#f59e0b;--yellow-bg:rgba(245,158,11,.12);--red:#ef4444;--red-bg:rgba(239,68,68,.12);}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+    header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+    .logo span{font-size:22px;font-weight:700;background:linear-gradient(135deg,#7c6af7,#5e81f4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .logo small{color:var(--text-muted);font-size:11px;margin-left:6px}
+    .header-right{display:flex;align-items:center;gap:12px}
+    #scan-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s}
+    #scan-btn:hover{opacity:.85}#scan-btn:disabled{opacity:.5;cursor:not-allowed}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+    .status-dot.scanning{background:var(--yellow);animation:pulse 1s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    #status-text{font-size:12px;color:var(--text-muted)}
+    .demo-badge{background:rgba(124,106,247,.2);border:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px}
+    .container{max-width:1600px;margin:0 auto;padding:20px 24px}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+    .card-title{font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+    .stat-tile{text-align:center}.stat-val{font-size:32px;font-weight:700;line-height:1.1}
+    .stat-label{font-size:11px;color:var(--text-muted);margin-top:4px}
+    .stat-green .stat-val{color:var(--green)}.stat-yellow .stat-val{color:var(--yellow)}.stat-red .stat-val{color:var(--red)}.stat-purple .stat-val{color:var(--accent)}
+    .tier-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;text-transform:uppercase}
+    .tier-great{background:var(--green-bg);color:var(--green);border:1px solid rgba(16,185,129,.25)}
+    .tier-good{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,.25)}
+    .tier-decent{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+    .score-wrap{display:flex;align-items:center;gap:8px}
+    .score-bar{flex:1;height:5px;background:var(--border);border-radius:99px;overflow:hidden}
+    .score-fill{height:100%;border-radius:99px;transition:width .6s ease}
+    .score-num{font-size:12px;font-weight:700;min-width:24px;text-align:right}
+    #deal-feed{display:flex;flex-direction:column;gap:10px;max-height:680px;overflow-y:auto}
+    #deal-feed::-webkit-scrollbar{width:5px}
+    #deal-feed::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+    .deal-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .2s,transform .1s;position:relative}
+    .deal-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+    .deal-card.new-flash{animation:flash .8s ease}
+    @keyframes flash{0%{background:rgba(124,106,247,.3)}100%{background:var(--surface2)}}
+    .tier-left{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:10px 0 0 10px}
+    .tier-left.great{background:var(--green)}.tier-left.good{background:var(--yellow)}.tier-left.decent{background:var(--red)}
+    .deal-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-left:8px}
+    .deal-title{font-size:13px;font-weight:600;line-height:1.4;flex:1}
+    .deal-price{font-size:18px;font-weight:800;color:var(--green);white-space:nowrap}
+    .deal-meta{display:flex;align-items:center;gap:6px;margin:8px 0 0 8px;flex-wrap:wrap}
+    .deal-tag{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--text-muted)}
+    .deal-row{display:flex;justify-content:space-between;align-items:center;margin:8px 0 0 8px}
+    .deal-platform{font-size:10px;color:var(--text-muted)}
+    .filter-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+    .filter-btn{padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--text-muted);font-size:12px;cursor:pointer;transition:all .2s}
+    .filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .filter-btn:hover:not(.active){border-color:var(--accent);color:var(--text)}
+    .search-input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:20px;font-size:12px;width:150px;outline:none}
+    .chart-wrap{position:relative;height:200px}.chart-wrap.tall{height:260px}
+    .platform-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+    .platform-row:last-child{border-bottom:none}
+    .platform-name{font-size:13px;font-weight:600;flex:1}
+    .platform-bar-wrap{flex:2;height:6px;background:var(--border);border-radius:99px;overflow:hidden}
+    .platform-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:99px}
+    .platform-count{font-size:12px;color:var(--text-muted);min-width:30px;text-align:right}
+    .platform-avg{font-size:11px;color:var(--accent);min-width:50px;text-align:right}
+    .cat-table{width:100%;border-collapse:collapse;font-size:12px}
+    .cat-table th{text-align:left;color:var(--text-muted);font-weight:600;text-transform:uppercase;font-size:10px;padding:6px 8px;border-bottom:1px solid var(--border)}
+    .cat-table td{padding:8px;border-bottom:1px solid rgba(46,51,71,.5)}
+    .cat-table tr:last-child td{border-bottom:none}
+    .vol-low{color:var(--green)}.vol-medium{color:var(--yellow)}
+    #toast-container{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px}
+    .toast{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;min-width:280px;max-width:360px;display:flex;align-items:flex-start;gap:10px;animation:slideIn .3s ease;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+    @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+    .toast-body{flex:1}.toast-title{font-size:12px;font-weight:700;margin-bottom:2px}.toast-text{font-size:11px;color:var(--text-muted)}
+    .toast.green{border-color:var(--green)}.toast.yellow{border-color:var(--yellow)}
+    .section-header{font-size:16px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+    .badge{background:var(--accent);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px}
+    @media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:800px){.grid-2,.grid-3{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo"><span>&#127924; PokeDeal Scanner</span><small>Bulk Card Deal Finder</small></div>
+  <div class="header-right">
+    <span class="demo-badge">&#9889; LIVE DEMO</span>
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Live</span>
+    <button id="scan-btn" onclick="simulateScan()">&#9889; Scan Now</button>
+  </div>
+</header>
+<div class="container">
+  <div style="margin-bottom:20px"><div class="grid-4">
+    <div class="card stat-tile stat-green"><div class="stat-val" id="stat-great">0</div><div class="stat-label">&#128994; Great Deals</div></div>
+    <div class="card stat-tile stat-yellow"><div class="stat-val" id="stat-good">0</div><div class="stat-label">&#128993; Good Deals</div></div>
+    <div class="card stat-tile stat-red"><div class="stat-val" id="stat-decent">0</div><div class="stat-label">&#128308; Decent Deals</div></div>
+    <div class="card stat-tile stat-purple"><div class="stat-val" id="stat-profit">$0</div><div class="stat-label">&#128176; Avg Profit Est.</div></div>
+  </div></div>
+  <div class="grid-2" style="margin-bottom:20px">
+    <div class="card" style="padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="section-header" style="margin:0">&#128293; Live Deal Feed <span class="badge" id="deal-count">0</span></div>
+      </div>
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+        <button class="filter-btn" onclick="setFilter('great',this)">&#128994; Great</button>
+        <button class="filter-btn" onclick="setFilter('good',this)">&#128993; Good</button>
+        <button class="filter-btn" onclick="setFilter('decent',this)">&#128308; Decent</button>
+        <button class="filter-btn" onclick="setFilter('reddit',this)">Reddit</button>
+        <button class="filter-btn" onclick="setFilter('ebay',this)">eBay</button>
+        <input class="search-input" type="text" id="search-input" placeholder="Search deals..." oninput="applyFilters()"/>
+      </div>
+      <div id="deal-feed"><div style="text-align:center;padding:40px;color:var(--text-muted)">&#9203; Starting scanner...</div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card"><div class="card-title">&#128200; Deal Activity (Last 7 Days)</div><div class="chart-wrap"><canvas id="activityChart"></canvas></div></div>
+      <div class="card"><div class="card-title">&#127760; Platform Breakdown</div><div id="platform-breakdown"></div></div>
+    </div>
+  </div>
+  <div class="grid-2" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-title">&#128202; Category Profit Potential</div>
+      <table class="cat-table">
+        <thead><tr><th>Category</th><th>Avg $/Card</th><th>Resale Rate</th><th>Volatility</th><th>Mult.</th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight:600">Vintage/WOTC</td><td>$0.75</td><td style="color:var(--green)">High</td><td class="vol-low">Low</td><td style="color:var(--accent)">3.5x</td></tr>
+          <tr><td style="font-weight:600">Holos &amp; Rev. Holos</td><td>$0.35</td><td style="color:var(--green)">High</td><td class="vol-medium">Medium</td><td style="color:var(--accent)">4.0x</td></tr>
+          <tr><td style="font-weight:600">V/ex/GX/VStar</td><td>$1.25</td><td style="color:var(--yellow)">Medium</td><td class="vol-medium">Medium</td><td style="color:var(--accent)">2.5x</td></tr>
+          <tr><td style="font-weight:600">Bulk Commons/UC</td><td>$0.02</td><td style="color:var(--yellow)">Medium</td><td class="vol-low">Low</td><td style="color:var(--accent)">2.0x</td></tr>
+          <tr><td style="font-weight:600">Mixed Lot</td><td>$0.08</td><td style="color:var(--yellow)">Medium</td><td class="vol-medium">Medium</td><td style="color:var(--accent)">2.2x</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">&#128185; Price History by Category</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px" id="ph-btns">
+        <button class="filter-btn active" onclick="showPriceHistory('holo',this)">Holos</button>
+        <button class="filter-btn" onclick="showPriceHistory('vintage',this)">Vintage</button>
+        <button class="filter-btn" onclick="showPriceHistory('vex',this)">V/ex/GX</button>
+        <button class="filter-btn" onclick="showPriceHistory('bulk',this)">Bulk</button>
+      </div>
+      <div class="chart-wrap tall"><canvas id="priceChart"></canvas></div>
+    </div>
+  </div>
+  <div class="grid-3">
+    <div class="card"><div class="card-title">&#129383; Deal Tier Distribution</div><div class="chart-wrap"><canvas id="tierChart"></canvas></div></div>
+    <div class="card"><div class="card-title">&#127942; Top Deals by Score</div><div id="top-deals" style="display:flex;flex-direction:column;gap:8px;font-size:12px"></div></div>
+    <div class="card">
+      <div class="card-title">&#9881;&#65039; Scanner Status</div>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.9">
+        <div>Status: <span id="ss-status" style="color:var(--green);font-weight:600">Active</span></div>
+        <div>Platforms: <span style="color:var(--text)">Reddit · eBay · TCGPlayer</span></div>
+        <div>Scan interval: <span style="color:var(--text)">Every 15 min</span></div>
+        <div>Next scan: <span id="ss-next" style="color:var(--accent)">—</span></div>
+        <div>Total found: <span id="ss-total" style="color:var(--text)">0</span></div>
+        <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:11px">
+          <div style="color:var(--accent);font-weight:700;margin-bottom:4px">Demo Mode</div>
+          <div>Live UI demo with simulated data. Full Python app scans real listings.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script>
+const MOCK_DEALS=[{id:'d001',title:'WTS Pokemon Bulk Lot 1000 Cards Mixed Holos Commons NM/LP',url:'#',platform:'reddit',asking_price:28,card_count:1000,tier:'great',score:9.2,estimated_profit:85.5,net_profit_after_fees:58.3,price_per_card:0.028,estimated_market_value:113.5,tags:['holo','bulk','1000-cards','great'],posted_at:ago(2)},{id:'d002',title:'WOTC Base Set Jungle Fossil Lot 200 Cards Vintage Pokemon',url:'#',platform:'ebay',asking_price:45,card_count:200,tier:'great',score:9.6,estimated_profit:105,net_profit_after_fees:78.2,price_per_card:0.225,estimated_market_value:150,tags:['vintage','wotc','base-set','great'],posted_at:ago(5)},{id:'d003',title:'FS Pokemon GX/V Card Lot 150 Cards Full Arts + Ultras',url:'#',platform:'reddit',asking_price:62,card_count:150,tier:'great',score:8.8,estimated_profit:125.5,net_profit_after_fees:94.1,price_per_card:0.413,estimated_market_value:187.5,tags:['v-cards','gx','full-art','great'],posted_at:ago(8)},{id:'d004',title:'Pokemon Reverse Holo Lot 300 Cards All NM Condition',url:'#',platform:'ebay',asking_price:38,card_count:300,tier:'great',score:8.4,estimated_profit:67,net_profit_after_fees:44.8,price_per_card:0.127,estimated_market_value:105,tags:['reverse-holo','holo','300-cards','great'],posted_at:ago(12)},{id:'d005',title:'Selling 1st Edition Base Set Lot Shadowless + Commons WOTC 1999',url:'#',platform:'reddit',asking_price:120,card_count:80,tier:'great',score:9.8,estimated_profit:180,net_profit_after_fees:142,price_per_card:1.5,estimated_market_value:300,tags:['vintage','1st-edition','shadowless','wotc','great'],posted_at:ago(15)},{id:'d006',title:'Pokemon Collection Dump 500 Mixed Cards Holos Included OBO',url:'#',platform:'ebay',asking_price:22,card_count:500,tier:'good',score:7.1,estimated_profit:44.5,net_profit_after_fees:28.2,price_per_card:0.044,estimated_market_value:66.5,tags:['bulk','holo','collection-dump','obo'],posted_at:ago(18)},{id:'d007',title:'WTS Scarlet Violet Bulk Lot ex Cards + Reverse Holos 200ct',url:'#',platform:'reddit',asking_price:55,card_count:200,tier:'good',score:6.8,estimated_profit:57.5,net_profit_after_fees:38,price_per_card:0.275,estimated_market_value:112.5,tags:['v-cards','ex','reverse-holo','good'],posted_at:ago(22)},{id:'d008',title:'Pokemon Holo Rare Lot 100 Cards Various Sets Must Sell',url:'#',platform:'tcgplayer',asking_price:18,card_count:100,tier:'good',score:7.4,estimated_profit:32,net_profit_after_fees:20.5,price_per_card:0.18,estimated_market_value:50,tags:['holo','must-sell','price-drop','good'],posted_at:ago(30)},{id:'d009',title:'Neo Genesis Neo Discovery Bulk 120 Cards Pokemon Vintage',url:'#',platform:'ebay',asking_price:35,card_count:120,tier:'good',score:7.9,estimated_profit:55,net_profit_after_fees:36.8,price_per_card:0.292,estimated_market_value:90,tags:['vintage','neo','wotc','good'],posted_at:ago(35)},{id:'d010',title:'FS Moving Sale 2000+ Pokemon Cards Mixed Sets Bulk Price Drop',url:'#',platform:'reddit',asking_price:75,card_count:2000,tier:'good',score:6.5,estimated_profit:85,net_profit_after_fees:52,price_per_card:0.0375,estimated_market_value:160,tags:['bulk','2000-cards','price-drop','obo'],posted_at:ago(42)},{id:'d011',title:'Pokemon Lot 400 Common Uncommon Cards Bulk Filler Cheap',url:'#',platform:'ebay',asking_price:9,card_count:400,tier:'decent',score:4.2,estimated_profit:8,net_profit_after_fees:2.5,price_per_card:0.0225,estimated_market_value:17,tags:['bulk','commons','cheap','decent'],posted_at:ago(55)},{id:'d012',title:'WTT Pokemon Charizard Era Lot 50 Cards Various Conditions',url:'#',platform:'reddit',asking_price:42,card_count:50,tier:'decent',score:3.8,estimated_profit:15.75,net_profit_after_fees:4.2,price_per_card:0.84,estimated_market_value:57.75,tags:['vintage','decent'],posted_at:ago(68)},{id:'d013',title:'Pokemon Sword Shield Bulk 300 Cards Commons NM OBO',url:'#',platform:'tcgplayer',asking_price:12,card_count:300,tier:'decent',score:3.5,estimated_profit:6,net_profit_after_fees:0.5,price_per_card:0.04,estimated_market_value:18,tags:['bulk','commons','obo','decent'],posted_at:ago(80)}];
+const NEW_DEAL_POOL=[{id:'n001',title:'WTS WOTC 1st Edition Base Set Commons 60 Cards Cheap!!',url:'#',platform:'reddit',asking_price:95,card_count:60,tier:'great',score:9.9,estimated_profit:205,net_profit_after_fees:165,price_per_card:1.583,estimated_market_value:300,tags:['vintage','1st-edition','wotc','great'],posted_at:ago(0)},{id:'n002',title:'Pokemon Holo Lot 500 Mixed Gen 1-3 Holos + Rares NM',url:'#',platform:'ebay',asking_price:42,card_count:500,tier:'great',score:8.7,estimated_profit:133,net_profit_after_fees:98.5,price_per_card:0.084,estimated_market_value:175,tags:['holo','gen1','gen2','great'],posted_at:ago(0)},{id:'n003',title:'Selling Pokemon Collection 800 Cards Vintage + Modern Mixed',url:'#',platform:'reddit',asking_price:60,card_count:800,tier:'good',score:7.3,estimated_profit:78.4,net_profit_after_fees:50,price_per_card:0.075,estimated_market_value:138.4,tags:['bulk','vintage','mixed','good'],posted_at:ago(0)},{id:'n004',title:'VStar VMax Lot 200 Cards Near Mint Pokemon English',url:'#',platform:'tcgplayer',asking_price:110,card_count:200,tier:'great',score:8.3,estimated_profit:140,net_profit_after_fees:108,price_per_card:0.55,estimated_market_value:250,tags:['vmax','vstar','v-cards','great'],posted_at:ago(0)}];
+let allDeals=[],currentFilter='all',activityChart,priceChart,tierChart,newDealIdx=0,scanCountdown=900;
+const PH={holo:{labels:['Apr13','Apr14','Apr15','Apr16','Apr17','Apr18','Apr19'],data:[0.31,0.33,0.34,0.32,0.35,0.36,0.35]},vintage:{labels:['Apr13','Apr14','Apr15','Apr16','Apr17','Apr18','Apr19'],data:[0.68,0.71,0.74,0.73,0.75,0.77,0.75]},vex:{labels:['Apr13','Apr14','Apr15','Apr16','Apr17','Apr18','Apr19'],data:[1.18,1.22,1.25,1.2,1.28,1.3,1.25]},bulk:{labels:['Apr13','Apr14','Apr15','Apr16','Apr17','Apr18','Apr19'],data:[0.019,0.02,0.02,0.021,0.02,0.021,0.02]}};
+const AD={labels:['Apr13','Apr14','Apr15','Apr16','Apr17','Apr18','Apr19'],data:[8,12,7,15,11,18,13]};
+const PD=[{platform:'reddit',icon:'&#128992;',count:34,avg_score:7.2},{platform:'ebay',icon:'&#128722;',count:28,avg_score:6.8},{platform:'tcgplayer',icon:'&#127183;',count:12,avg_score:6.1}];
+function ago(m){return new Date(Date.now()-m*60000).toISOString();}
+document.addEventListener('DOMContentLoaded',()=>{
+  initCharts();renderPlatformBreakdown();
+  let i=0;const drip=setInterval(()=>{
+    if(i<MOCK_DEALS.length){allDeals.push(MOCK_DEALS[i]);renderFeed();updateStats();if(i<5)showNewDealToast(MOCK_DEALS[i]);i++;}
+    else{clearInterval(drip);document.getElementById('status-text').textContent='Connected Live';startCountdown();}
+  },350);
+  showPriceHistory('holo',document.querySelector('#ph-btns .filter-btn'));
+});
+function startCountdown(){scanCountdown=900;const tick=setInterval(()=>{scanCountdown--;const m=Math.floor(scanCountdown/60),s=scanCountdown%60;document.getElementById('ss-next').textContent=m+':'+(s<10?'0':'')+s;if(scanCountdown<=0){clearInterval(tick);simulateScan();}},1000);}
+function simulateScan(){const btn=document.getElementById('scan-btn'),dot=document.getElementById('status-dot'),st=document.getElementById('status-text');btn.disabled=true;dot.className='status-dot scanning';st.textContent='Scanning...';document.getElementById('ss-status').textContent='Scanning...';toast('Scan Started','Checking Reddit, eBay, TCGPlayer...','',2500);setTimeout(()=>{const nd=NEW_DEAL_POOL[newDealIdx++%NEW_DEAL_POOL.length];const fresh={...nd,id:nd.id+Date.now(),posted_at:new Date().toISOString()};allDeals.unshift(fresh);AD.data[AD.data.length-1]++;updateActivityChart();renderFeed(true);updateStats();showNewDealToast(fresh);toast('Scan Complete','Found 1 new '+(fresh.tier==='great'?'GREAT':'GOOD')+' deal!','green',4000);btn.disabled=false;dot.className='status-dot';st.textContent='Connected Live';document.getElementById('ss-status').textContent='Active';startCountdown();},3000);}
+function renderFeed(flashFirst=false){let list=[...allDeals];const q=document.getElementById('search-input').value.toLowerCase();if(currentFilter!=='all'){if(['great','good','decent'].includes(currentFilter))list=list.filter(d=>d.tier===currentFilter);else list=list.filter(d=>d.platform===currentFilter);}if(q)list=list.filter(d=>d.title.toLowerCase().includes(q)||(d.tags||[]).some(t=>t.includes(q)));document.getElementById('deal-count').textContent=list.length;document.getElementById('deal-feed').innerHTML=list.map((d,i)=>dealHTML(d,flashFirst&&i===0)).join('');}
+function dealHTML(d,flash=false){const sc=d.score>=8?'var(--green)':d.score>=5?'var(--yellow)':'var(--red)';const pc=(d.net_profit_after_fees||0)>=0?'var(--green)':'var(--red)';const ps=(d.estimated_profit||0)>=0?'+':'';const tags=(d.tags||[]).slice(0,4).map(t=>'<span class="deal-tag">'+t+'</span>').join('');const ppc=d.price_per_card?'$'+d.price_per_card.toFixed(3)+'/card':'';const cc=d.card_count?d.card_count.toLocaleString()+' cards':'';const ta=timeAgo(d.posted_at);const pi={reddit:'&#128992;',ebay:'&#128722;',tcgplayer:'&#127183;'}[d.platform]||'&#127760;';const tl={great:'GREAT DEAL',good:'GOOD DEAL',decent:'DECENT DEAL'}[d.tier]||d.tier;const te={great:'&#128994;',good:'&#128993;',decent:'&#128308;'}[d.tier]||'';return '<div class="deal-card'+(flash?' new-flash':'')+'" onclick="window.open(''+d.url+'','_blank')"><div class="tier-left '+d.tier+'"></div><div class="deal-top"><div class="deal-title">'+esc(d.title)+'</div><div style="text-align:right"><div class="deal-price">$'+d.asking_price.toFixed(2)+'</div><span class="tier-badge tier-'+d.tier+'">'+te+' '+tl+'</span></div></div><div class="deal-row"><div class="deal-meta">'+tags+(ppc?'<span class="deal-tag">'+ppc+'</span>':'')+(cc?'<span class="deal-tag">'+cc+'</span>':'')+'</div></div><div class="deal-row" style="margin-top:8px"><div style="display:flex;align-items:center;gap:10px"><div class="score-wrap" style="width:100px"><div class="score-bar"><div class="score-fill" style="width:'+d.score*10+'%;background:'+sc+'"></div></div><div class="score-num" style="color:'+sc+'">'+d.score+'</div></div><span style="font-size:12px;font-weight:600;color:'+pc+'">'+ps+'$'+(d.estimated_profit||0).toFixed(2)+' est.</span><span style="font-size:10px;color:var(--text-muted)">Net: <span style="color:'+pc+'">'+ps+'$'+(d.net_profit_after_fees||0).toFixed(2)+'</span></span></div><div class="deal-platform">'+pi+' '+d.platform+' &middot; '+ta+'</div></div></div>';}
+function updateStats(){const gr=allDeals.filter(d=>d.tier==='great').length,go=allDeals.filter(d=>d.tier==='good').length,de=allDeals.filter(d=>d.tier==='decent').length;const avg=allDeals.length?allDeals.reduce((a,b)=>a+(b.estimated_profit||0),0)/allDeals.length:0;document.getElementById('stat-great').textContent=gr;document.getElementById('stat-good').textContent=go;document.getElementById('stat-decent').textContent=de;document.getElementById('stat-profit').textContent='$'+avg.toFixed(0);document.getElementById('ss-total').textContent=allDeals.length;updateTierChart(gr,go,de);updateTopDeals();}
+function updateTopDeals(){const top=[...allDeals].sort((a,b)=>b.score-a.score).slice(0,5);document.getElementById('top-deals').innerHTML=top.map((d,i)=>'<div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0" onclick="window.open(''+d.url+'','_blank')"><div style="color:var(--text-muted);min-width:18px">#'+(i+1)+'</div><div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.title)+'</div><div style="font-weight:700;color:var(--accent);min-width:36px;text-align:right">'+d.score+'/10</div></div>').join('');}
+function renderPlatformBreakdown(){const max=Math.max(...PD.map(p=>p.count));document.getElementById('platform-breakdown').innerHTML=PD.map(p=>'<div class="platform-row"><div class="platform-name">'+p.icon+' '+p.platform+'</div><div class="platform-bar-wrap"><div class="platform-bar-fill" style="width:'+(p.count/max*100).toFixed(0)+'%"></div></div><div class="platform-count">'+p.count+'</div><div class="platform-avg">&#11088; '+p.avg_score+'</div></div>').join('');}
+function initCharts(){activityChart=new Chart(document.getElementById('activityChart').getContext('2d'),{type:'bar',data:{labels:AD.labels,datasets:[{label:'Deals',data:AD.data,backgroundColor:'rgba(124,106,247,.5)',borderColor:'rgba(124,106,247,1)',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8892b0',font:{size:10}},grid:{color:'#2e3347'}},y:{ticks:{color:'#8892b0',font:{size:10}},grid:{color:'#2e3347'},beginAtZero:true}}}});tierChart=new Chart(document.getElementById('tierChart').getContext('2d'),{type:'doughnut',data:{labels:['Great','Good','Decent'],datasets:[{data:[0,0,0],backgroundColor:['rgba(16,185,129,.8)','rgba(245,158,11,.8)','rgba(239,68,68,.8)'],borderColor:['#10b981','#f59e0b','#ef4444'],borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8892b0',font:{size:11},padding:12}}}}});priceChart=new Chart(document.getElementById('priceChart').getContext('2d'),{type:'line',data:{labels:[],datasets:[{data:[],borderColor:'#10b981',backgroundColor:'rgba(16,185,129,.1)',tension:.4,fill:true,pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8892b0',font:{size:10}},grid:{color:'#2e3347'}},y:{ticks:{color:'#8892b0',font:{size:10},callback:function(v){return '$'+v.toFixed(3);}},grid:{color:'#2e3347'}}}}});}
+function updateActivityChart(){activityChart.data.datasets[0].data=[...AD.data];activityChart.update();}
+function updateTierChart(g,go,d){tierChart.data.datasets[0].data=[g,go,d];tierChart.update();}
+function showPriceHistory(key,btn){document.querySelectorAll('#ph-btns .filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const h=PH[key];priceChart.data.labels=h.labels;priceChart.data.datasets[0].data=h.data;priceChart.update();}
+function setFilter(f,btn){currentFilter=f;document.querySelectorAll('.filter-bar .filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderFeed();}
+function applyFilters(){renderFeed();}
+function showNewDealToast(d){const cls=d.tier==='great'?'green':d.tier==='good'?'yellow':'red';toast('New '+(d.tier==='great'?'GREAT':d.tier==='good'?'GOOD':'DECENT')+' DEAL - $'+d.asking_price,d.title.slice(0,55)+'...',cls,5000);}
+function toast(title,text,cls,duration){const el=document.createElement('div');el.className='toast '+(cls||'');el.innerHTML='<div style="font-size:20px">'+(cls==='green'?'&#128994;':cls==='yellow'?'&#128993;':'&#128276;')+'</div><div class="toast-body"><div class="toast-title">'+title+'</div><div class="toast-text">'+text+'</div></div>';document.getElementById('toast-container').appendChild(el);setTimeout(()=>{el.style.cssText='opacity:0;transform:translateX(100%);transition:.3s';setTimeout(()=>el.remove(),300);},(duration||4000));}
+function timeAgo(iso){if(!iso)return'';const m=Math.floor((Date.now()-new Date(iso).getTime())/60000);if(m<1)return'just now';if(m<60)return m+'m ago';const h=Math.floor(m/60);return h<24?h+'h ago':Math.floor(h/24)+'d ago';}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+</script>
+</body>
+</html>
