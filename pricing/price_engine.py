@@ -5,30 +5,38 @@ Fetches market prices from multiple APIs and estimates deal value
 import re
 import json
 import os
-import hashlib
 import requests
 import time
 from typing import Optional, Dict, List, Tuple
-from datetime import datetime, timedelta
 from models.deal import CardCategory
 
 # ─────────────────────────────────────────────
-# Market price baselines (updated 2026 research)
-# Used as fallback when API is unavailable
+# Market price baselines (2026 calibrated values)
+# Based on real eBay sold listings research
 # ─────────────────────────────────────────────
 BASELINE_PRICES = {
     CardCategory.VINTAGE_WOTC: {
         "avg_price_per_card": 0.75,
-        "low": 0.35,
-        "high": 3.50,
+        "low": 0.30,
+        "high": 4.00,
         "resale_rate": "high",
         "volatility": "low",
         "resale_multiplier": 3.5
     },
+    CardCategory.CHASE_SETS: {
+        # Hidden Fates, Shining Fates, Evolving Skies, 151, Crown Zenith, Prismatic
+        # Even bulk from these sets has high pull value
+        "avg_price_per_card": 1.50,
+        "low": 0.50,
+        "high": 8.00,
+        "resale_rate": "very_high",
+        "volatility": "medium",
+        "resale_multiplier": 5.0
+    },
     CardCategory.HOLO_REVERSE: {
-        "avg_price_per_card": 0.35,
+        "avg_price_per_card": 0.40,
         "low": 0.10,
-        "high": 2.00,
+        "high": 2.50,
         "resale_rate": "high",
         "volatility": "medium",
         "resale_multiplier": 4.0
@@ -36,40 +44,44 @@ BASELINE_PRICES = {
     CardCategory.V_EX_GX: {
         "avg_price_per_card": 1.25,
         "low": 0.40,
-        "high": 5.00,
+        "high": 6.00,
         "resale_rate": "medium",
         "volatility": "medium",
         "resale_multiplier": 2.5
     },
     CardCategory.BULK_COMMONS: {
-        "avg_price_per_card": 0.02,
-        "low": 0.01,
-        "high": 0.05,
+        # Calibrated: real mixed bulk lots average ~$0.05/card resale
+        # (includes rares/uncommons that sellers lump as "bulk")
+        "avg_price_per_card": 0.05,
+        "low": 0.02,
+        "high": 0.15,
         "resale_rate": "medium",
         "volatility": "low",
         "resale_multiplier": 2.0
     },
     CardCategory.MIXED: {
-        "avg_price_per_card": 0.08,
-        "low": 0.02,
-        "high": 0.35,
+        # Mixed lots: avg $0.18/card includes holos, rares, uncommons, commons
+        # A truly random mixed collection is worth more than pure commons
+        "avg_price_per_card": 0.18,
+        "low": 0.05,
+        "high": 0.80,
         "resale_rate": "medium",
         "volatility": "medium",
-        "resale_multiplier": 2.2
+        "resale_multiplier": 2.5
     },
     CardCategory.UNKNOWN: {
-        "avg_price_per_card": 0.05,
-        "low": 0.01,
-        "high": 0.20,
+        "avg_price_per_card": 0.10,
+        "low": 0.02,
+        "high": 0.40,
         "resale_rate": "unknown",
         "volatility": "high",
-        "resale_multiplier": 1.8
+        "resale_multiplier": 2.0
     }
 }
 
 # Simple in-memory price cache (15 min TTL)
 _price_cache: Dict[str, Tuple[Dict, float]] = {}
-CACHE_TTL = 900  # 15 minutes
+CACHE_TTL = 900
 
 
 def _cache_get(key: str) -> Optional[Dict]:
@@ -88,7 +100,6 @@ def get_market_price(category: CardCategory, card_name: str = None) -> Dict:
     """
     Get market price data for a card category.
     Tries Pokemon Price Tracker API first, falls back to baselines.
-    Returns: dict with avg_price_per_card, resale_rate, volatility, resale_multiplier
     """
     cache_key = f"{category.value}:{card_name or 'bulk'}"
     cached = _cache_get(cache_key)
@@ -140,12 +151,11 @@ def estimate_lot_value(
 ) -> Dict:
     """
     Core valuation engine — estimates a lot's market value and profit potential.
-    Returns a full breakdown dict.
     """
     if not categories:
         categories = [CardCategory.UNKNOWN]
 
-    # Build weighted average market price per card based on detected categories
+    # Build weighted average market price per card
     total_weight = 0
     weighted_price = 0
     weighted_multiplier = 0
@@ -166,7 +176,7 @@ def estimate_lot_value(
         avg_multiplier = weighted_multiplier / total_weight
     else:
         avg_price_per_card = BASELINE_PRICES[CardCategory.UNKNOWN]["avg_price_per_card"]
-        avg_multiplier = 1.8
+        avg_multiplier = 2.0
 
     # Estimate card count from description if not provided
     if not card_count:
@@ -177,7 +187,7 @@ def estimate_lot_value(
         estimated_market_value = card_count * avg_price_per_card
         price_per_card = asking_price / card_count if card_count > 0 else None
     else:
-        # No card count — estimate conservatively
+        # No card count — estimate conservatively using multiplier
         estimated_market_value = asking_price * avg_multiplier
         price_per_card = None
 
@@ -194,7 +204,6 @@ def estimate_lot_value(
     fees = estimated_market_value * (platform_fees_pct / 100)
     net_profit = estimated_market_value - asking_price - fees - shipping
 
-    # Determine dominant volatility and resale rate
     volatility = _most_common(all_volatilities)
     resale_rate = _most_common(all_resale_rates)
 
@@ -219,10 +228,23 @@ def _category_weight(category: CardCategory, description: str) -> float:
     """Weight a category based on how prominently it's mentioned"""
     desc_lower = description.lower()
     weights = {
-        CardCategory.VINTAGE_WOTC: 3.0 if any(k in desc_lower for k in ["wotc", "base set", "1st edition", "shadowless", "1999", "2000"]) else 1.0,
-        CardCategory.HOLO_REVERSE: 2.5 if any(k in desc_lower for k in ["holo", "foil", "reverse", "shiny"]) else 1.0,
-        CardCategory.V_EX_GX: 2.0 if any(k in desc_lower for k in ["vmax", "vstar", "gx", " ex ", "full art", "ultra rare"]) else 1.0,
-        CardCategory.BULK_COMMONS: 1.5 if any(k in desc_lower for k in ["bulk", "common", "lot", "1000", "500"]) else 1.0,
+        CardCategory.VINTAGE_WOTC: 3.0 if any(k in desc_lower for k in [
+            "wotc", "base set", "1st edition", "shadowless", "1999", "2000",
+            "jungle", "fossil", "neo"
+        ]) else 1.0,
+        CardCategory.CHASE_SETS: 4.0 if any(k in desc_lower for k in [
+            "hidden fates", "shining fates", "evolving skies", "crown zenith",
+            "prismatic", "151", "celebrations", "champions path"
+        ]) else 1.0,
+        CardCategory.HOLO_REVERSE: 2.5 if any(k in desc_lower for k in [
+            "holo", "foil", "reverse", "shiny"
+        ]) else 1.0,
+        CardCategory.V_EX_GX: 2.0 if any(k in desc_lower for k in [
+            "vmax", "vstar", "gx", " ex ", "full art", "ultra rare"
+        ]) else 1.0,
+        CardCategory.BULK_COMMONS: 1.5 if any(k in desc_lower for k in [
+            "bulk", "common", "lot", "1000", "500"
+        ]) else 1.0,
         CardCategory.MIXED: 1.2,
         CardCategory.UNKNOWN: 1.0
     }
@@ -232,12 +254,14 @@ def _category_weight(category: CardCategory, description: str) -> float:
 def _extract_card_count(text: str) -> Optional[int]:
     """Try to extract card count from description text"""
     patterns = [
-        r'(\d{2,5})\s*(?:cards?|pokemon\s*cards?|pcs?|pieces?)',
+        r'(\d{2,5})\s*\+?\s*(?:cards?|pokemon\s*cards?|pcs?|pieces?)',
         r'(?:lot|collection)\s*of\s*(\d{2,5})',
         r'(\d{2,5})\s*(?:bulk|mixed)',
         r'over\s*(\d{2,5})',
         r'approximately\s*(\d{2,5})',
+        r'approx\.?\s*(\d{2,5})',
         r'~\s*(\d{2,5})',
+        r'(\d{2,5})\s*card\s*lot',
     ]
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -251,17 +275,17 @@ def _extract_card_count(text: str) -> Optional[int]:
 def _estimate_shipping(card_count: Optional[int]) -> float:
     """Estimate shipping cost based on card count"""
     if not card_count:
-        return 8.0
+        return 6.0
     if card_count < 100:
-        return 5.0
+        return 4.0
     elif card_count < 500:
-        return 8.0
+        return 7.0
     elif card_count < 1000:
-        return 12.0
+        return 10.0
     elif card_count < 5000:
-        return 20.0
+        return 18.0
     else:
-        return 35.0
+        return 30.0
 
 
 def _most_common(lst: List[str]) -> str:
