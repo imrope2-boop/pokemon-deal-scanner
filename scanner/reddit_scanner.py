@@ -79,14 +79,19 @@ def _fetch_subreddit_json(subreddit: str, limit: int = 50) -> List[Dict]:
     params = {"limit": limit}
 
     try:
-        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        resp = requests.get(url, headers=headers, params=params, timeout=15)
+        print(f"  📶 Reddit API status for r/{subreddit}: {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
-            for child in data.get("data", {}).get("children", []):
+            children = data.get("data", {}).get("children", [])
+            for child in children:
                 posts.append(child.get("data", {}))
+            print(f"  📄 Fetched {len(posts)} posts from r/{subreddit}")
         elif resp.status_code == 429:
             print(f"⚠️  Reddit rate limited on r/{subreddit}, waiting...")
             time.sleep(5)
+        else:
+            print(f"⚠️  Reddit HTTP {resp.status_code} for r/{subreddit}: {resp.text[:200]}")
     except Exception as e:
         print(f"⚠️  Reddit JSON error for r/{subreddit}: {e}")
 
@@ -203,7 +208,7 @@ def scan_reddit(limit_per_sub: int = 50) -> List[Deal]:
     reddit = _make_reddit_client()
 
     for subreddit in SUBREDDITS:
-        print(f"🔍 r/{subreddit}...")
+        print(f"📡 r/{subreddit}...")
         posts = []
 
         if reddit:
@@ -220,15 +225,36 @@ def scan_reddit(limit_per_sub: int = 50) -> List[Deal]:
                         "created_utc": post.created_utc,
                         "preview": getattr(post, "preview", None)
                     })
+                print(f"  📄 Fetched {len(posts)} posts via PRAW from r/{subreddit}")
             except Exception as e:
                 print(f"⚠️  PRAW error on r/{subreddit}: {e}, falling back")
                 posts = _fetch_subreddit_json(subreddit, limit_per_sub)
         else:
             posts = _fetch_subreddit_json(subreddit, limit_per_sub)
 
-        sub_deals = 0
+        # Diagnostic counters at each filter stage
+        n_sale = n_price = n_relevant = sub_deals = 0
+
         for post_data in posts:
             try:
+                title = post_data.get("title", "")
+                body = post_data.get("selftext", "")
+                flair = post_data.get("link_flair_text") or ""
+                combined = f"{title} {body}"
+
+                if not _is_sale_post(title, flair):
+                    continue
+                n_sale += 1
+
+                price = extract_price(combined)
+                if price is None:
+                    continue
+                n_price += 1
+
+                if not is_relevant_post(title, body, price):
+                    continue
+                n_relevant += 1
+
                 deal = _parse_post(post_data)
                 if deal:
                     deals.append(deal)
@@ -236,8 +262,8 @@ def scan_reddit(limit_per_sub: int = 50) -> List[Deal]:
             except Exception as e:
                 print(f"⚠️  Error parsing post: {e}")
 
-        print(f"   → {sub_deals} deals from r/{subreddit}")
+        print(f"  ↗ {sub_deals} deals [fetched={len(posts)} sale={n_sale} priced={n_price} relevant={n_relevant}] from r/{subreddit}")
         time.sleep(1)
 
-    print(f"✅ Reddit scan complete: {len(deals)} deals total")
+    print(f"╔ Reddit scan complete: {len(deals)} deals total")
     return deals
