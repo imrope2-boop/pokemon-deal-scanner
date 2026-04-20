@@ -5,49 +5,76 @@
         "label": "GREAT DEAL",
         "color": "green",
         "emoji": "🟢",
-        "score_min": 8,
-        "below_market_pct": 40,
-        "bulk_price_per_card_max": 0.02,
-        "description": "40%+ below market or ≤$0.02/card bulk"
+        "score_min": 7,
+        "below_market_pct": 35,
+        "bulk_price_per_card_max": 0.05,
+        "description": "35%+ below market or great price-per-card"
       },
       "good": {
         "label": "GOOD DEAL",
         "color": "yellow",
         "emoji": "🟡",
-        "score_min": 5,
-        "below_market_pct": 25,
-        "bulk_price_per_card_max": 0.035,
-        "description": "25-40% below market value"
+        "score_min": 4.5,
+        "below_market_pct": 20,
+        "bulk_price_per_card_max": 0.08,
+        "description": "20-35% below market value"
       },
       "decent": {
         "label": "DECENT DEAL",
         "color": "red",
         "emoji": "🔴",
-        "score_min": 3,
-        "below_market_pct": 15,
-        "bulk_price_per_card_max": 0.05,
-        "description": "15-25% below market value"
+        "score_min": 2.5,
+        "below_market_pct": 10,
+        "bulk_price_per_card_max": 0.15,
+        "description": "10-20% below market value"
       }
     },
-    "minimum_lot_size": 50,
-    "minimum_profit_margin": 15
+    "minimum_lot_size": 20,
+    "minimum_profit_margin": 5
   },
   "card_categories": {
     "vintage_wotc": {
-      "label": "Vintage/WOTC",
+      "label": "Vintage/WOTC (1999-2003)",
       "price_per_card_avg": 0.75,
       "resale_multiplier": 3.5,
       "volatility": "low",
       "resale_rate": "high",
-      "keywords": ["base set", "jungle", "fossil", "team rocket", "gym heroes", "gym challenge", "neo genesis", "neo discovery", "neo revelation", "neo destiny", "wotc", "wizards", "1999", "2000", "2001", "2002", "shadowless", "1st edition"]
+      "keywords": [
+        "base set", "jungle", "fossil", "team rocket", "gym heroes", "gym challenge",
+        "neo genesis", "neo discovery", "neo revelation", "neo destiny",
+        "wotc", "wizards of the coast", "1999", "2000", "2001", "2002",
+        "shadowless", "1st edition", "first edition", "thick stamp",
+        "ex ruby sapphire", "ex sandstorm", "ex dragon", "ex team magma",
+        "ex hidden legends", "ex firered leafgreen", "ex deoxys", "ex emerald",
+        "ex unseen forces", "ex delta species", "ex legend maker",
+        "ex holon phantoms", "ex crystal guardians", "ex dragon frontiers",
+        "ex power keepers"
+      ]
+    },
+    "chase_sets": {
+      "label": "Chase Sets (High Pull Value)",
+      "price_per_card_avg": 1.50,
+      "resale_multiplier": 5.0,
+      "volatility": "medium",
+      "resale_rate": "very_high",
+      "keywords": [
+        "hidden fates", "shining fates", "evolving skies", "crown zenith",
+        "prismatic evolutions", "prismatic evolution", "151", "scarlet violet 151",
+        "celebrations", "champion's path", "champions path",
+        "battle styles", "chilling reign", "fusion strike",
+        "brilliant stars", "astral radiance", "lost origin",
+        "silver tempest", "paldea evolved", "obsidian flames",
+        "paradox rift", "temporal forces", "twilight masquerade",
+        "stellar crown", "surging sparks", "journey together"
+      ]
     },
     "holo_reverse_holo": {
       "label": "Holos & Reverse Holos",
-      "price_per_card_avg": 0.35,
+      "price_per_card_avg": 0.40,
       "resale_multiplier": 4.0,
       "volatility": "medium",
       "resale_rate": "high",
-      "keywords": ["holo", "reverse holo", "reverse", "foil", "holofoil", "shiny"]
+      "keywords": ["holo lot", "holo bulk", "reverse holo", "reverse holo lot", "foil lot", "holofoil", "holo only", "holos only"]
     },
     "v_ex_gx_cards": {
       "label": "V/ex/GX/VStar/VMax",
@@ -55,54 +82,75 @@
       "resale_multiplier": 2.5,
       "volatility": "medium",
       "resale_rate": "medium",
-      "keywords": ["v card", "vmax", "vstar", "gx", "ex ", "full art", "ultra rare", "secret rare", "hyper rare"]
+      "keywords": ["v card", "vmax", "vstar", "gx", "ex card", "full art", "ultra rare", "secret rare", "hyper rare", "special illustration", "illustration rare", "tera ex"]
     },
     "bulk_commons": {
       "label": "Bulk Commons/Uncommons",
-      "price_per_card_avg": 0.01,
+      "price_per_card_avg": 0.05,
       "resale_multiplier": 2.0,
       "volatility": "low",
       "resale_rate": "medium",
-      "keywords": ["bulk", "common", "uncommon", "lot", "collection", "1000", "500", "mixed"]
+      "keywords": ["bulk commons", "commons only", "bulk uncommon", "common lot", "filler cards"]
     }
   },
   "platforms": {
     "reddit": {
       "enabled": true,
-      "subreddits": ["pkmntcgtrades", "PokemonCardValue", "pokemoncardcollectors", "PokemonTCG", "pokemontrades"],
-      "scan_interval_minutes": 10,
-      "post_types": ["WTS", "WOTF", "WTT", "sale", "selling", "trade", "bulk"]
+      "subreddits": [
+        "pkmntcgtrades", "PokemonCardValue", "pokemoncardcollectors",
+        "PokemonTCG", "pokemontrades", "pkmntcg", "PokemonCardTrader", "Pokemoncard"
+      ],
+      "scan_interval_minutes": 10
     },
     "ebay": {
       "enabled": true,
-      "scan_interval_minutes": 20,
-      "search_terms": [
-        "pokemon cards bulk lot",
-        "pokemon card collection dump",
-        "pokemon bulk holo lot",
-        "pokemon vintage bulk",
-        "pokemon wotc lot bulk"
-      ],
-      "max_price": 500,
-      "min_card_count": 100
+      "scan_interval_minutes": 15,
+      "max_price": 800,
+      "min_price": 5,
+      "min_card_count": 20
     },
     "tcgplayer": {
       "enabled": true,
-      "scan_interval_minutes": 30,
-      "categories": ["bulk", "lot"]
+      "scan_interval_minutes": 30
     },
     "facebook": {
-      "enabled": false,
-      "note": "Facebook requires Playwright browser automation. Enable if needed."
+      "enabled": false
     }
   },
   "scan_keywords": [
     "bulk", "lot", "collection dump", "selling collection", "pokemon cards",
     "holo lot", "vintage pokemon", "base set", "wotc", "binder dump",
     "1000 cards", "500 cards", "obo", "price drop", "moving sale",
-    "must sell", "cheap", "below market", "wholesale"
+    "must sell", "below market", "wholesale", "unsearched", "unweighed",
+    "clearing out", "quick sale", "inherited", "childhood collection",
+    "job lot", "joblot", "bundle", "hidden fates", "shining fates",
+    "evolving skies", "crown zenith", "prismatic", "151",
+    "collection sale", "downsizing", "moving house", "holo collection",
+    "mixed lot", "binder full", "collection clearance", "shadowless"
   ],
   "excluded_keywords": [
-    "graded", "psa 10", "bgs", "cgc", "slabs only", "individual", "single card"
+    "graded only", "psa 10", "psa 9", "bgs 10", "cgc 10", "slabs only",
+    "hits pulled", "hit pulled", "rares removed", "holos removed",
+    "weighed and searched", "sorted and searched"
+  ],
+  "negative_signals": [
+    "searched", "sorted", "weighed", "hits pulled", "rares pulled",
+    "holos pulled", "pulled holos", "pulled rares", "no hits",
+    "commons only", "already went through", "gone through"
+  ],
+  "desperation_signals": [
+    "moving house", "moving soon", "need gone", "must sell", "need cash",
+    "clearing out", "clearing collection", "no idea what i have",
+    "no clue what", "inherited", "childhood collection", "found in attic",
+    "grandparent", "quick sale", "urgent sale", "price drop", "reduced",
+    "lowered price", "will negotiate", "open to offers", "desperate",
+    "downsizing", "selling everything", "collection sale",
+    "moving abroad", "relocating", "storage unit", "estate sale",
+    "job lot", "joblot", "going cheap"
+  ],
+  "unsearched_signals": [
+    "unsearched", "unweighed", "not searched", "not sorted", "not gone through",
+    "never opened", "untouched", "straight from storage",
+    "not checked", "random mix", "mystery lot", "as found", "as is"
   ]
 }
