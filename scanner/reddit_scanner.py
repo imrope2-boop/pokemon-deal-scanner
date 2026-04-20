@@ -71,30 +71,60 @@ def _make_reddit_client() -> Optional[object]:
         return None
 
 
-def _fetch_subreddit_json(subreddit: str, limit: int = 50) -> List[Dict]:
-    """Fetch posts via Reddit's public JSON API (no auth required)"""
+def _fetch_reddit_posts(url: str, params: dict, label: str) -> List[Dict]:
+    """Helper to fetch posts from a Reddit JSON endpoint"""
     posts = []
-    url = f"https://www.reddit.com/r/{subreddit}/new.json"
     headers = {"User-Agent": "PokemonDealScanner/1.0 (deal research bot)"}
-    params = {"limit": limit}
-
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=15)
-        print(f"  📶 Reddit API status for r/{subreddit}: {resp.status_code}")
+        print(f"  📶 {label}: HTTP {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
             children = data.get("data", {}).get("children", [])
             for child in children:
                 posts.append(child.get("data", {}))
-            print(f"  📄 Fetched {len(posts)} posts from r/{subreddit}")
         elif resp.status_code == 429:
-            print(f"⚠️  Reddit rate limited on r/{subreddit}, waiting...")
+            print(f"⚠️  Rate limited on {label}, waiting...")
             time.sleep(5)
         else:
-            print(f"⚠️  Reddit HTTP {resp.status_code} for r/{subreddit}: {resp.text[:200]}")
+            print(f"⚠️  HTTP {resp.status_code} for {label}")
     except Exception as e:
-        print(f"⚠️  Reddit JSON error for r/{subreddit}: {e}")
+        print(f"⚠️  Error fetching {label}: {e}")
+    return posts
 
+
+def _fetch_subreddit_json(subreddit: str, limit: int = 50) -> List[Dict]:
+    """
+    Fetch WTS/sale posts via Reddit search API (targets sale posts directly),
+    plus /new posts as fallback. Deduplicates by post ID.
+    """
+    seen_ids = set()
+    posts = []
+
+    # Strategy 1: Search for WTS/selling posts in this subreddit
+    search_queries = ["WTS", "selling", "for sale", "bulk lot"]
+    for query in search_queries:
+        url = f"https://www.reddit.com/r/{subreddit}/search.json"
+        params = {"q": query, "sort": "new", "restrict_sr": "1", "limit": min(limit, 25), "t": "week"}
+        results = _fetch_reddit_posts(url, params, f"r/{subreddit} search '{query}'")
+        for post in results:
+            pid = post.get("id", "")
+            if pid and pid not in seen_ids:
+                seen_ids.add(pid)
+                posts.append(post)
+        time.sleep(0.5)
+
+    # Strategy 2: Also fetch /new to catch anything missed
+    url = f"https://www.reddit.com/r/{subreddit}/new.json"
+    params = {"limit": limit}
+    new_posts = _fetch_reddit_posts(url, params, f"r/{subreddit} /new")
+    for post in new_posts:
+        pid = post.get("id", "")
+        if pid and pid not in seen_ids:
+            seen_ids.add(pid)
+            posts.append(post)
+
+    print(f"  📄 Fetched {len(posts)} unique posts from r/{subreddit}")
     return posts
 
 
