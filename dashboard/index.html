@@ -454,7 +454,7 @@
   // ── API calls ─────────────────────────────────────────────────────────────
   async function loadDeals(limit = 100) {
     try {
-      const res = await fetch(`/deals?limit=${limit}`);
+      const res = await fetch(`/api/deals?limit=${limit}`);
       const data = await res.json();
       allDeals = data.deals || [];
       renderDeals();
@@ -470,7 +470,7 @@
     btn.disabled = true;
     document.getElementById('scan-status').textContent = '⏳ Scanning…';
     try {
-      const res = await fetch('/scan', { method: 'POST' });
+      const res = await fetch('/api/scan', { method: 'POST' });
       const data = await res.json();
       log(`Scan triggered — ${data.new_deals || 0} new deals`, 'success');
       document.getElementById('scan-status').textContent = `Found ${data.new_deals || 0} deals`;
@@ -666,7 +666,7 @@
   // ── Load config ───────────────────────────────────────────────────────────
   async function loadConfig() {
     try {
-      const res = await fetch('/config');
+      const res = await fetch('/api/config');
       if (res.ok) {
         const cfg = await res.json();
         scanIntervalMinutes = cfg.scan_interval_minutes || 15;
