@@ -241,6 +241,9 @@ def _fetch_subreddit_json(subreddit: str, limit: int = 100) -> List[Dict]:
 
 
 def _is_sale_post(title: str, flair: str = "") -> bool:
+    # Reject [W]/[WTB]/[ISO] seeking posts immediately
+    if re.search(r'\[W(?:TB)?\]|\[ISO\]', title, re.IGNORECASE):
+        return False
     combined = f"{flair} {title}".lower()
     if any(s in combined for s in SALE_FLAIR):
         return True
@@ -275,6 +278,8 @@ def _parse_post(post_data: Dict):
         return None
     if price is None:
         return None
+    if price <= 1.0:
+        return None  # $0/$1 placeholder price — treat as unpriced
 
     categories = detect_categories(title, body)
     card_count = _extract_card_count(combined_text)
