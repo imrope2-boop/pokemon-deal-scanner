@@ -202,21 +202,30 @@ def _listing_to_deal(listing: Dict) -> Optional[Deal]:
 def scan_ebay(max_price: int = 800) -> List[Deal]:
     """
     Main eBay scanner. Searches all terms, deduplicates by URL.
+    Fast-fails after 3 consecutive timeouts/errors (eBay blocks server IPs).
     """
     deals = []
     seen_urls = set()
+    consecutive_failures = 0
+    MAX_FAILURES = 3
 
     for search_term in EBAY_SEARCH_TERMS:
+        if consecutive_failures >= MAX_FAILURES:
+            print(f"\u26a0\ufe0f  eBay: {consecutive_failures} consecutive failures — skipping remaining terms (IP blocked?)")
+            break
+
         url = _build_ebay_url(search_term, max_price)
-        print(f"🔍 eBay: '{search_term}'...")
+        print(f"\U0001f50d eBay: '{search_term}'...")
 
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=15)
+            resp = requests.get(url, headers=HEADERS, timeout=5)
             if resp.status_code != 200:
-                print(f"⚠️  eBay {resp.status_code} for '{search_term}'")
-                time.sleep(2)
+                print(f"\u26a0\ufe0f  eBay {resp.status_code} for '{search_term}'")
+                consecutive_failures += 1
+                time.sleep(1)
                 continue
 
+            consecutive_failures = 0  # Reset on success
             soup = BeautifulSoup(resp.text, "lxml")
             items = soup.select(".s-item")
             found_this_term = 0
@@ -232,12 +241,13 @@ def scan_ebay(max_price: int = 800) -> List[Deal]:
                     deals.append(deal)
                     found_this_term += 1
 
-            print(f"   → {found_this_term} deals from '{search_term}'")
+            print(f"  \u2197 {found_this_term} deals from '{search_term}'")
 
         except Exception as e:
-            print(f"⚠️  eBay error for '{search_term}': {e}")
+            print(f"\u26a0\ufe0f  eBay error for '{search_term}': {e}")
+            consecutive_failures += 1
 
         time.sleep(1.5)  # Polite delay
 
-    print(f"✅ eBay scan complete: {len(deals)} deals from {len(seen_urls)} unique listings")
+    print(f"\u2554 eBay scan complete: {len(deals)} deals from {len(seen_urls)} unique listings")
     return deals
