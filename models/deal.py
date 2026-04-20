@@ -19,6 +19,9 @@ class Platform(str, Enum):
     EBAY = "ebay"
     TCGPLAYER = "tcgplayer"
     FACEBOOK = "facebook"
+    YAHOO_JAPAN = "yahoo_japan"
+    MERCARI_JAPAN = "mercari_japan"
+    KIJIJI = "kijiji"
     OTHER = "other"
 
 
