@@ -22,7 +22,7 @@ from database.db import init_db, get_deals, get_deal_stats, get_price_history
 from scanner.scheduler import run_scan, register_new_deal_callback
 from models.deal import Deal
 
-SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL_MINUTES", "15"))
+SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL_MINUTES", "15"))  # Used for display only — scanning is manual
 scheduler = AsyncIOScheduler()
 connected_websockets: List[WebSocket] = []
 last_scan_summary = {}
@@ -33,9 +33,7 @@ async def lifespan(app: FastAPI):
     def on_new_deal(deal: Deal):
         asyncio.create_task(_broadcast({"type": "new_deal", "deal": deal.to_dict()}))
     register_new_deal_callback(on_new_deal)
-    scheduler.add_job(_run_scan_job, "interval", minutes=SCAN_INTERVAL, id="main_scan", replace_existing=True)
     scheduler.start()
-    asyncio.create_task(_delayed_startup_scan())
     yield
     scheduler.shutdown()
 
