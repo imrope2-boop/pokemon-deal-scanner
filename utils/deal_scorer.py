@@ -159,20 +159,41 @@ def is_relevant_post(title: str, description: str, price: Optional[float]) -> bo
 
 
 def extract_price(text: str) -> Optional[float]:
-    """Extract price from post text"""
+    """
+    Extract price from post text. Handles Reddit-style pricing formats:
+    - $45, $ 45, $45.00
+    - 45 USD, 45 dollars
+    - asking $45, price: 45, selling for 45
+    - 45 shipped, 45 obo, 45 takes, 45 pp (PayPal)
+    - want $45, looking for 45
+    - [45] (bracket format common in trade posts)
+    """
     patterns = [
+        # Standard dollar sign formats
         r'\$\s*(\d+(?:\.\d{1,2})?)',
+        # Currency words
         r'(\d+(?:\.\d{1,2})?)\s*(?:usd|dollars?)',
-        r'(?:asking|price|selling for|listed at)\s*\$?\s*(\d+(?:\.\d{1,2})?)',
-        r'(?:^|\s)\$(\d+(?:\.\d{1,2})?)(?:\s|$)',
+        # Asking/price keywords with optional $
+        r'(?:asking|price[:\s]|selling for|listed at|want|looking for)\s*\$?\s*(\d+(?:\.\d{1,2})?)',
+        # Number followed by shipping/offer keywords (no $ required)
+        r'(\d+(?:\.\d{1,2})?)\s*(?:shipped|obo|takes|take it|pp|paypal|g&s|gs|firm|each|ea|for all)',
+        # [45] bracket format used in trade post titles
+        r'\[(\d+(?:\.\d{1,2})?)\]',
+        # "45 for" or "45 for everything/all/the lot"
+        r'(\d+(?:\.\d{1,2})?)\s+(?:for all|for everything|for the lot|for both)',
+        # Fallback: standalone $XX at word boundary
+        r'(?:^|\s)\$(\d+(?:\.\d{1,2})?)(?:\s|$|,|!)',
     ]
     for pattern in patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        if matches:
-            for m in matches:
-                price = float(m)
-                if 0.50 <= price <= 10000:
-                    return price
+        try:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                for m in matches:
+                    price = float(m)
+                    if 1.0 <= price <= 10000:
+                        return price
+        except Exception:
+            continue
     return None
 
 
