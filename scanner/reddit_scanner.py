@@ -20,7 +20,7 @@ from models.deal import Deal, Platform, DealTier, CardCategory, PriceBreakdown
 from utils.deal_scorer import detect_categories, is_relevant_post, extract_price, score_deal, build_tags
 from pricing.price_engine import estimate_lot_value, _extract_card_count
 
-# Expanded subreddit list
+# Subreddits to scan
 SUBREDDITS = [
     "pkmntcgtrades",        # Main trading sub — huge volume
     "PokemonCardValue",     # People asking value of collections
@@ -32,16 +32,20 @@ SUBREDDITS = [
     "Pokemoncard",
 ]
 
-# Sale/WTS flair and title patterns — broad to catch more posts
+# Sale flair exact matches (lowercased)
 SALE_FLAIR = [
-    "wts", "wts/wtt", "wtt", "selling", "sale", "for sale", "fs", "fs/ft",
-    "selling bulk", "bulk sale", "collection sale", "lot for sale"
+    "wts", "wts/wtt", "selling", "sale", "for sale", "fs", "fs/ft",
+    "selling bulk", "bulk sale", "collection sale", "lot for sale",
+    "trade", "wtt", "ft", "swap"
 ]
+
+# Sale title patterns — cast a wide net to catch WTS/FS/selling posts
 SALE_PATTERNS = [
-    r'\bWTS\b', r'\bWTT\b', r'\bFS\b', r'\bFT\b',
-    r'selling', r'for sale', r'for trade', r'bulk\s+lot',
-    r'collection\s+dump', r'price\s+drop', r'clearing',
+    r'\bWTS\b', r'\bWTT\b', r'\bFS\b', r'\bFT\b', r'\bH:\b', r'\bW:\b',
+    r'selling', r'for sale', r'for trade', r'bulk\s*lot',
+    r'collection\s+dump', r'price\s*drop', r'clearing',
     r'must\s+sell', r'quick\s+sale', r'moving\s+sale',
+    r'\[H\]', r'\[W\]',   # [H]ave [W]ant format
 ]
 
 
@@ -49,21 +53,14 @@ def _make_reddit_client() -> Optional[object]:
     """Create PRAW Reddit client from env vars"""
     if not PRAW_AVAILABLE:
         return None
-
     client_id = os.getenv("REDDIT_CLIENT_ID")
     client_secret = os.getenv("REDDIT_CLIENT_SECRET")
     user_agent = os.getenv("REDDIT_USER_AGENT", "PokemonDealScanner/1.0")
-
     if not client_id or not client_secret or client_id == "your_reddit_client_id":
         print("⚠️  Reddit credentials not set — using public JSON fallback")
         return None
-
     try:
-        reddit = praw.Reddit(
-            client_id=client_id,
-            client_secret=client_secret,
-            user_agent=user_agent
-        )
+        reddit = praw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
         reddit.read_only = True
         return reddit
     except Exception as e:
@@ -71,74 +68,67 @@ def _make_reddit_client() -> Optional[object]:
         return None
 
 
-def _fetch_reddit_posts(url: str, params: dict, label: str) -> List[Dict]:
-    """Helper to fetch posts from a Reddit JSON endpoint"""
-    posts = []
-    headers = {"User-Agent": "PokemonDealScanner/1.0 (deal research bot)"}
-    try:
-        resp = requests.get(url, headers=headers, params=params, timeout=15)
-        print(f"  📶 {label}: HTTP {resp.status_code}")
-        if resp.status_code == 200:
-            data = resp.json()
-            children = data.get("data", {}).get("children", [])
-            for child in children:
-                posts.append(child.get("data", {}))
-        elif resp.status_code == 429:
-            print(f"⚠️  Rate limited on {label}, waiting...")
-            time.sleep(5)
-        else:
-            print(f"⚠️  HTTP {resp.status_code} for {label}")
-    except Exception as e:
-        print(f"⚠️  Error fetching {label}: {e}")
-    return posts
-
-
-def _fetch_subreddit_json(subreddit: str, limit: int = 50) -> List[Dict]:
+def _fetch_subreddit_json(subreddit: str, limit: int = 100) -> List[Dict]:
     """
-    Fetch WTS/sale posts via Reddit search API (targets sale posts directly),
-    plus /new posts as fallback. Deduplicates by post ID.
+    Fetch newest posts from subreddit via public JSON API.
+    Uses a realistic browser User-Agent to avoid 403s.
     """
-    seen_ids = set()
     posts = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+    }
 
-    # Strategy 1: Search for WTS/selling posts in this subreddit
-    search_queries = ["WTS", "selling", "for sale", "bulk lot"]
-    for query in search_queries:
-        url = f"https://www.reddit.com/r/{subreddit}/search.json"
-        params = {"q": query, "sort": "new", "restrict_sr": "1", "limit": min(limit, 25), "t": "week"}
-        results = _fetch_reddit_posts(url, params, f"r/{subreddit} search '{query}'")
-        for post in results:
-            pid = post.get("id", "")
-            if pid and pid not in seen_ids:
-                seen_ids.add(pid)
-                posts.append(post)
-        time.sleep(0.5)
+    # Fetch more posts to get enough WTS ones (subs have mixed flair types)
+    after = None
+    fetched = 0
+    while fetched < limit:
+        batch = min(100, limit - fetched)
+        url = f"https://www.reddit.com/r/{subreddit}/new.json"
+        params = {"limit": batch, "raw_json": 1}
+        if after:
+            params["after"] = after
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            print(f"  📶 r/{subreddit} /new: HTTP {resp.status_code}")
+            if resp.status_code == 200:
+                data = resp.json()
+                children = data.get("data", {}).get("children", [])
+                for child in children:
+                    posts.append(child.get("data", {}))
+                fetched += len(children)
+                after = data.get("data", {}).get("after")
+                if not after or not children:
+                    break
+            elif resp.status_code == 429:
+                print(f"⚠️  Rate limited on r/{subreddit}, waiting 10s...")
+                time.sleep(10)
+                break
+            else:
+                print(f"⚠️  HTTP {resp.status_code} for r/{subreddit}")
+                break
+        except Exception as e:
+            print(f"⚠️  Error fetching r/{subreddit}: {e}")
+            break
 
-    # Strategy 2: Also fetch /new to catch anything missed
-    url = f"https://www.reddit.com/r/{subreddit}/new.json"
-    params = {"limit": limit}
-    new_posts = _fetch_reddit_posts(url, params, f"r/{subreddit} /new")
-    for post in new_posts:
-        pid = post.get("id", "")
-        if pid and pid not in seen_ids:
-            seen_ids.add(pid)
-            posts.append(post)
-
-    print(f"  📄 Fetched {len(posts)} unique posts from r/{subreddit}")
+    print(f"  📄 Fetched {len(posts)} posts from r/{subreddit}")
     return posts
 
 
 def _is_sale_post(title: str, flair: str = "") -> bool:
     """Check if post is a for-sale/trade post — broad matching"""
     combined = f"{flair} {title}".lower()
+    # Check flair keywords
     if any(s in combined for s in SALE_FLAIR):
         return True
+    # Check title patterns
     for pat in SALE_PATTERNS:
         if re.search(pat, title, re.IGNORECASE):
             return True
-    # Also catch posts that mention bulk/lot selling even without explicit WTS
+    # Broad catch — selling/bulk/lot keywords
     if any(k in combined for k in ["bulk lot", "collection lot", "clearing collection",
-                                    "selling my", "selling a", "price drop"]):
+                                    "selling my", "selling a", "price drop", "lot of pokemon",
+                                    "pokemon lot", "card lot", "binder full"]):
         return True
     return False
 
@@ -147,6 +137,9 @@ def _parse_post(post_data: Dict) -> Optional[Deal]:
     """Parse a Reddit post into a Deal object"""
     title = post_data.get("title", "")
     body = post_data.get("selftext", "")
+    # Skip removed/deleted posts
+    if body in ("[removed]", "[deleted]"):
+        body = ""
     permalink = f"https://reddit.com{post_data.get('permalink', '')}"
     flair = post_data.get("link_flair_text") or ""
     author = post_data.get("author", "unknown")
@@ -166,7 +159,6 @@ def _parse_post(post_data: Dict) -> Optional[Deal]:
 
     categories = detect_categories(title, body)
     card_count = _extract_card_count(combined_text)
-
     valuation = estimate_lot_value(price, card_count, categories, combined_text)
 
     score, tier = score_deal(
@@ -179,7 +171,6 @@ def _parse_post(post_data: Dict) -> Optional[Deal]:
         description=body
     )
 
-    # Show DECENT and above
     if tier == DealTier.NO_DEAL and score < 2.0:
         return None
 
@@ -230,7 +221,7 @@ def _parse_post(post_data: Dict) -> Optional[Deal]:
     )
 
 
-def scan_reddit(limit_per_sub: int = 50) -> List[Deal]:
+def scan_reddit(limit_per_sub: int = 100) -> List[Deal]:
     """
     Main Reddit scanner. Returns list of Deal objects found.
     """
@@ -262,13 +253,14 @@ def scan_reddit(limit_per_sub: int = 50) -> List[Deal]:
         else:
             posts = _fetch_subreddit_json(subreddit, limit_per_sub)
 
-        # Diagnostic counters at each filter stage
         n_sale = n_price = n_relevant = sub_deals = 0
 
         for post_data in posts:
             try:
                 title = post_data.get("title", "")
                 body = post_data.get("selftext", "")
+                if body in ("[removed]", "[deleted]"):
+                    body = ""
                 flair = post_data.get("link_flair_text") or ""
                 combined = f"{title} {body}"
 
@@ -293,7 +285,7 @@ def scan_reddit(limit_per_sub: int = 50) -> List[Deal]:
                 print(f"⚠️  Error parsing post: {e}")
 
         print(f"  ↗ {sub_deals} deals [fetched={len(posts)} sale={n_sale} priced={n_price} relevant={n_relevant}] from r/{subreddit}")
-        time.sleep(1)
+        time.sleep(2)  # Polite delay between subreddits
 
     print(f"╔ Reddit scan complete: {len(deals)} deals total")
     return deals
