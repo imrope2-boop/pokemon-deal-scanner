@@ -24,6 +24,7 @@ class Platform(str, Enum):
 
 class CardCategory(str, Enum):
     VINTAGE_WOTC = "vintage_wotc"
+    CHASE_SETS = "chase_sets"          # Hidden Fates, Shining Fates, Evolving Skies, 151, Crown Zenith
     HOLO_REVERSE = "holo_reverse_holo"
     V_EX_GX = "v_ex_gx_cards"
     BULK_COMMONS = "bulk_commons"
