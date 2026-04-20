@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎴 Pokémon Bulk Deal Scanner</title>
+  <style>
+    :root {
+      --bg: #0f0f13;
+      --card: #1a1a24;
+      --border: #2a2a3a;
+      --accent: #7c3aed;
+      --accent2: #06b6d4;
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --great: #10b981;
+      --good: #f59e0b;
+      --decent: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo h1 { font-size: 1.4rem; font-weight: 700; background: linear-gradient(135deg, #a855f7, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .logo .subtitle { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .ws-status { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; }
+    .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+    .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    .ws-dot.error { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    /* Scan controls */
+    .scan-bar {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 8px 16px;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #6d28d9; transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #3a3a4a; }
+    .scan-status { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+    .next-scan { font-size: 0.8rem; color: var(--accent2); }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      padding: 16px 24px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .stat-card .val { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .stat-card .lbl { font-size: 0.72rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card.great .val { color: var(--great); }
+    .stat-card.good .val { color: var(--good); }
+    .stat-card.decent .val { color: var(--decent); }
+    .stat-card.total .val { color: var(--accent2); }
+    .stat-card.savings .val { color: var(--accent); }
+
+    /* Filters */
+    .filters {
+      padding: 0 24px 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-label { font-size: 0.75rem; color: var(--muted); margin-right: 4px; }
+    .filter-btn {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: var(--border);
+      color: var(--muted);
+      border: 1px solid transparent;
+    }
+    .filter-btn.active { background: rgba(124,58,237,0.2); color: var(--accent); border-color: var(--accent); }
+    .filter-btn.great.active { background: rgba(16,185,129,0.15); color: var(--great); border-color: var(--great); }
+    .filter-btn.good.active { background: rgba(245,158,11,0.15); color: var(--good); border-color: var(--good); }
+    .filter-btn.decent.active { background: rgba(239,68,68,0.15); color: var(--decent); border-color: var(--decent); }
+    .filter-btn:hover { opacity: 0.85; }
+    .search-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 6px 12px;
+      width: 200px;
+      margin-left: auto;
+    }
+    .search-box:focus { outline: none; border-color: var(--accent); }
+
+    /* Deal grid */
+    .deal-grid {
+      padding: 0 24px 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 14px;
+    }
+
+    /* Deal card */
+    .deal-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .deal-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .deal-card.great { border-left: 3px solid var(--great); }
+    .deal-card.good { border-left: 3px solid var(--good); }
+    .deal-card.decent { border-left: 3px solid var(--decent); }
+    .deal-card.new-deal { animation: slideIn 0.4s ease; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+
+    .deal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .deal-title { font-size: 0.92rem; font-weight: 600; line-height: 1.3; flex: 1; }
+    .deal-title a { color: var(--text); text-decoration: none; }
+    .deal-title a:hover { color: var(--accent2); text-decoration: underline; }
+
+    .tier-badge {
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .tier-badge.great { background: rgba(16,185,129,0.2); color: var(--great); }
+    .tier-badge.good { background: rgba(245,158,11,0.2); color: var(--good); }
+    .tier-badge.decent { background: rgba(239,68,68,0.2); color: var(--decent); }
+
+    .deal-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .platform-badge {
+      border-radius: 5px;
+      padding: 2px 7px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .platform-badge.reddit { background: rgba(255,69,0,0.2); color: #ff4500; }
+    .platform-badge.ebay { background: rgba(0,100,200,0.2); color: #0064c8; }
+    .platform-badge.tcgplayer { background: rgba(124,58,237,0.2); color: #a78bfa; }
+    .deal-time { font-size: 0.68rem; color: var(--muted); }
+    .deal-author { font-size: 0.68rem; color: var(--muted); }
+
+    .deal-prices {
+      display: flex;
+      gap: 12px;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .price-ask { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+    .price-market { font-size: 0.82rem; color: var(--muted); text-decoration: line-through; }
+    .price-savings {
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 5px;
+    }
+    .price-savings.great { background: rgba(16,185,129,0.15); color: var(--great); }
+    .price-savings.good { background: rgba(245,158,11,0.15); color: var(--good); }
+    .price-savings.decent { background: rgba(239,68,68,0.15); color: var(--decent); }
+
+    .deal-score {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .score-bar-bg { flex: 1; height: 5px; background: var(--border); border-radius: 3px; }
+    .score-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+    .score-bar-fill.great { background: var(--great); }
+    .score-bar-fill.good { background: var(--good); }
+    .score-bar-fill.decent { background: var(--decent); }
+    .score-val { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+
+    .deal-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+    .tag {
+      background: rgba(124,58,237,0.12);
+      color: #a78bfa;
+      border: 1px solid rgba(124,58,237,0.2);
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 0.66rem;
+      font-weight: 500;
+    }
+
+    .deal-actions { display: flex; gap: 8px; }
+    .btn-view {
+      flex: 1;
+      padding: 7px;
+      border-radius: 7px;
+      font-size: 0.78rem;
+      background: rgba(124,58,237,0.15);
+      color: #a78bfa;
+      border: 1px solid rgba(124,58,237,0.25);
+      text-align: center;
+      text-decoration: none;
+      display: block;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-view:hover { background: rgba(124,58,237,0.25); }
+
+    /* Empty state */
+    .empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.9rem; }
+
+    /* Toast notifications */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 1000;
+    }
+    .toast {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      max-width: 320px;
+      font-size: 0.82rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      animation: toastIn 0.3s ease;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .toast.great { border-left: 3px solid var(--great); }
+    .toast.good { border-left: 3px solid var(--good); }
+    .toast.decent { border-left: 3px solid var(--decent); }
+    .toast-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .toast-content .toast-title { font-weight: 600; margin-bottom: 2px; }
+    .toast-content .toast-body { color: var(--muted); font-size: 0.76rem; }
+    @keyframes toastIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateX(20px)} }
+
+    /* Scan log */
+    .log-panel {
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding: 12px 24px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      max-height: 120px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+    }
+    .log-panel p { padding: 2px 0; }
+    .log-panel p.info { color: var(--accent2); }
+    .log-panel p.success { color: var(--green); }
+    .log-panel p.warn { color: var(--yellow); }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      header { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .deal-grid { grid-template-columns: 1fr; padding: 0 12px 24px; }
+      .stats-row { padding: 12px; }
+      .filters, .scan-bar { padding: 8px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div>
+      <h1>🎴 Pokémon Bulk Deal Scanner</h1>
+      <div class="subtitle">Real-time deals from Reddit · eBay · TCGPlayer</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Connecting…</span>
+    </div>
+  </div>
+</header>
+
+<div class="scan-bar">
+  <button class="btn-primary" id="btn-scan" onclick="triggerScan()">⚡ Scan Now</button>
+  <button class="btn-secondary" onclick="clearDeals()">🗑 Clear</button>
+  <button class="btn-secondary" onclick="loadDeals()">🔄 Refresh</button>
+  <span class="scan-status" id="scan-status">Idle</span>
+  <span class="next-scan" id="next-scan"></span>
+</div>
+
+<div class="stats-row">
+  <div class="stat-card total"><div class="val" id="stat-total">0</div><div class="lbl">Total Deals</div></div>
+  <div class="stat-card great"><div class="val" id="stat-great">0</div><div class="lbl">🟢 Great</div></div>
+  <div class="stat-card good"><div class="val" id="stat-good">0</div><div class="lbl">🟡 Good</div></div>
+  <div class="stat-card decent"><div class="val" id="stat-decent">0</div><div class="lbl">🔴 Decent</div></div>
+  <div class="stat-card savings"><div class="val" id="stat-savings">$0</div><div class="lbl">Avg Savings</div></div>
+</div>
+
+<div class="filters">
+  <span class="filter-label">Filter:</span>
+  <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
+  <button class="filter-btn great" data-filter="great" onclick="setFilter('great', this)">🟢 Great</button>
+  <button class="filter-btn good" data-filter="good" onclick="setFilter('good', this)">🟡 Good</button>
+  <button class="filter-btn decent" data-filter="decent" onclick="setFilter('decent', this)">🔴 Decent</button>
+  <button class="filter-btn" data-filter="reddit" onclick="setFilter('reddit', this)">Reddit</button>
+  <button class="filter-btn" data-filter="ebay" onclick="setFilter('ebay', this)">eBay</button>
+  <button class="filter-btn" data-filter="tcgplayer" onclick="setFilter('tcgplayer', this)">TCGPlayer</button>
+  <input class="search-box" id="search-box" placeholder="🔍 Search deals…" oninput="renderDeals()" />
+</div>
+
+<div class="deal-grid" id="deal-grid">
+  <div class="empty-state">
+    <div class="icon">🔍</div>
+    <p>No deals yet. Click <strong>Scan Now</strong> to find bulk Pokémon deals!</p>
+  </div>
+</div>
+
+<div class="log-panel" id="log-panel"></div>
+
+<div id="toast-container"></div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allDeals = [];
+  let currentFilter = 'all';
+  let ws = null;
+  let scanCountdown = null;
+  let scanIntervalMinutes = 15;
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = `${proto}://${location.host}/ws`;
+    log(`Connecting to ${url}…`, 'info');
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      setWS('connected', '● Live');
+      log('WebSocket connected — live updates active', 'success');
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        handleWSMessage(msg);
+      } catch(e) {
+        log('WS parse error: ' + e.message, 'warn');
+      }
+    };
+
+    ws.onclose = () => {
+      setWS('', 'Reconnecting…');
+      log('WebSocket closed — reconnecting in 5s…', 'warn');
+      setTimeout(connectWS, 5000);
+    };
+
+    ws.onerror = (e) => {
+      setWS('error', 'Error');
+      log('WebSocket error', 'warn');
+    };
+  }
+
+  function setWS(cls, label) {
+    const dot = document.getElementById('ws-dot');
+    const lbl = document.getElementById('ws-label');
+    dot.className = 'ws-dot ' + cls;
+    lbl.textContent = label;
+  }
+
+  function handleWSMessage(msg) {
+    if (msg.type === 'new_deal') {
+      const deal = msg.deal;
+      // Avoid duplicates
+      if (!allDeals.find(d => d.url === deal.url)) {
+        allDeals.unshift(deal);
+        showToast(deal);
+        renderDeals();
+        updateStats();
+        log(`New deal: ${deal.title.slice(0,60)}… — $${deal.price}`, 'success');
+      }
+    } else if (msg.type === 'scan_started') {
+      document.getElementById('scan-status').textContent = '⏳ Scanning…';
+      document.getElementById('btn-scan').disabled = true;
+      log('Scan started…', 'info');
+    } else if (msg.type === 'scan_complete') {
+      document.getElementById('scan-status').textContent = `Last scan: ${timeAgo(new Date())}`;
+      document.getElementById('btn-scan').disabled = false;
+      log(`Scan complete — ${msg.total_new} new deals found`, 'success');
+      loadDeals();
+      startCountdown(scanIntervalMinutes * 60);
+    } else if (msg.type === 'ping') {
+      // keepalive
+    }
+  }
+
+  // ── API calls ─────────────────────────────────────────────────────────────
+  async function loadDeals(limit = 100) {
+    try {
+      const res = await fetch(`/deals?limit=${limit}`);
+      const data = await res.json();
+      allDeals = data.deals || [];
+      renderDeals();
+      updateStats();
+      log(`Loaded ${allDeals.length} deals from database`, 'info');
+    } catch(e) {
+      log('Failed to load deals: ' + e.message, 'warn');
+    }
+  }
+
+  async function triggerScan() {
+    const btn = document.getElementById('btn-scan');
+    btn.disabled = true;
+    document.getElementById('scan-status').textContent = '⏳ Scanning…';
+    try {
+      const res = await fetch('/scan', { method: 'POST' });
+      const data = await res.json();
+      log(`Scan triggered — ${data.new_deals || 0} new deals`, 'success');
+      document.getElementById('scan-status').textContent = `Found ${data.new_deals || 0} deals`;
+    } catch(e) {
+      log('Scan failed: ' + e.message, 'warn');
+      document.getElementById('scan-status').textContent = 'Scan error';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function clearDeals() {
+    allDeals = [];
+    renderDeals();
+    updateStats();
+    log('Display cleared (deals still in database)', 'info');
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function setFilter(f, el) {
+    currentFilter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    renderDeals();
+  }
+
+  function getFilteredDeals() {
+    const query = (document.getElementById('search-box').value || '').toLowerCase();
+    return allDeals.filter(d => {
+      // Tier/platform filter
+      if (currentFilter === 'all') { /* pass */ }
+      else if (['great','good','decent'].includes(currentFilter)) {
+        if ((d.tier || '').toLowerCase() !== currentFilter) return false;
+      } else if (['reddit','ebay','tcgplayer'].includes(currentFilter)) {
+        if ((d.platform || '').toLowerCase() !== currentFilter) return false;
+      }
+      // Text search
+      if (query) {
+        const haystack = `${d.title} ${(d.tags||[]).join(' ')} ${d.platform}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderDeals() {
+    const grid = document.getElementById('deal-grid');
+    const deals = getFilteredDeals();
+
+    if (deals.length === 0) {
+      grid.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>${
+        allDeals.length === 0
+          ? 'No deals yet. Click <strong>Scan Now</strong> to find bulk Pokémon deals!'
+          : 'No deals match your filter.'
+      }</p></div>`;
+      return;
+    }
+
+    grid.innerHTML = deals.map((d, i) => dealCardHTML(d, i === 0 && d._new)).join('');
+    deals.forEach(d => { d._new = false; });
+  }
+
+  function dealCardHTML(d, isNew) {
+    const tier = (d.tier || 'decent').toLowerCase();
+    const platform = (d.platform || '').toLowerCase();
+    const price = d.price != null ? `$${parseFloat(d.price).toFixed(2)}` : 'N/A';
+    const market = d.market_value != null ? `$${parseFloat(d.market_value).toFixed(2)}` : null;
+    const pct = d.discount_percent != null ? `${Math.round(d.discount_percent)}% below market` : null;
+    const score = d.score != null ? parseFloat(d.score) : 0;
+    const scoreWidth = Math.min(100, Math.round(score * 10)) + '%';
+    const tags = (d.tags || []).slice(0, 5);
+    const timeStr = d.found_at ? timeAgo(new Date(d.found_at)) : '';
+    const tierLabel = tier === 'great' ? '🟢 Great Deal' : tier === 'good' ? '🟡 Good Deal' : '🔴 Decent Deal';
+
+    return `
+      <div class="deal-card ${tier} ${isNew ? 'new-deal' : ''}">
+        <div class="deal-header">
+          <div class="deal-title">
+            <a href="${escHtml(d.url || '#')}" target="_blank" rel="noopener">
+              ${escHtml((d.title || 'Untitled').slice(0, 100))}
+            </a>
+          </div>
+          <span class="tier-badge ${tier}">${tierLabel}</span>
+        </div>
+
+        <div class="deal-meta">
+          <span class="platform-badge ${platform}">${platform || 'unknown'}</span>
+          ${d.author ? `<span class="deal-author">by ${escHtml(d.author)}</span>` : ''}
+          ${timeStr ? `<span class="deal-time">${timeStr}</span>` : ''}
+        </div>
+
+        <div class="deal-prices">
+          <span class="price-ask">${price}</span>
+          ${market ? `<span class="price-market">${market}</span>` : ''}
+          ${pct ? `<span class="price-savings ${tier}">${pct}</span>` : ''}
+        </div>
+
+        <div class="deal-score">
+          <div class="score-bar-bg">
+            <div class="score-bar-fill ${tier}" style="width:${scoreWidth}"></div>
+          </div>
+          <span class="score-val">Score: ${score.toFixed(1)}/10</span>
+        </div>
+
+        ${tags.length ? `<div class="deal-tags">${tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join('')}</div>` : ''}
+
+        <div class="deal-actions">
+          <a class="btn-view" href="${escHtml(d.url || '#')}" target="_blank" rel="noopener">View Listing →</a>
+        </div>
+      </div>`;
+  }
+
+  function updateStats() {
+    const deals = allDeals;
+    document.getElementById('stat-total').textContent = deals.length;
+    document.getElementById('stat-great').textContent = deals.filter(d => (d.tier||'').toLowerCase() === 'great').length;
+    document.getElementById('stat-good').textContent = deals.filter(d => (d.tier||'').toLowerCase() === 'good').length;
+    document.getElementById('stat-decent').textContent = deals.filter(d => (d.tier||'').toLowerCase() === 'decent').length;
+
+    const withDiscount = deals.filter(d => d.discount_percent != null && d.discount_percent > 0);
+    if (withDiscount.length) {
+      const avg = withDiscount.reduce((s, d) => s + (d.market_value - d.price), 0) / withDiscount.length;
+      document.getElementById('stat-savings').textContent = `$${avg.toFixed(0)}`;
+    } else {
+      document.getElementById('stat-savings').textContent = '$0';
+    }
+  }
+
+  // ── Toast notifications ────────────────────────────────────────────────────
+  function showToast(deal) {
+    const tier = (deal.tier || 'decent').toLowerCase();
+    const icon = tier === 'great' ? '🟢' : tier === 'good' ? '🟡' : '🔴';
+    const price = deal.price != null ? ` — $${parseFloat(deal.price).toFixed(2)}` : '';
+    const container = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = `toast ${tier}`;
+    el.innerHTML = `
+      <div class="toast-icon">${icon}</div>
+      <div class="toast-content">
+        <div class="toast-title">${escHtml((deal.title || '').slice(0, 55))}…</div>
+        <div class="toast-body">${escHtml(deal.platform || '')}${price}</div>
+      </div>`;
+    container.appendChild(el);
+    setTimeout(() => {
+      el.style.animation = 'toastOut 0.3s ease forwards';
+      setTimeout(() => el.remove(), 300);
+    }, 5000);
+    // Keep max 3 toasts
+    while (container.children.length > 3) container.removeChild(container.firstChild);
+  }
+
+  // ── Countdown ─────────────────────────────────────────────────────────────
+  function startCountdown(seconds) {
+    if (scanCountdown) clearInterval(scanCountdown);
+    let remaining = seconds;
+    const el = document.getElementById('next-scan');
+    const tick = () => {
+      if (remaining <= 0) { el.textContent = ''; clearInterval(scanCountdown); return; }
+      const m = Math.floor(remaining / 60), s = remaining % 60;
+      el.textContent = `Next scan in ${m}:${String(s).padStart(2,'0')}`;
+      remaining--;
+    };
+    tick();
+    scanCountdown = setInterval(tick, 1000);
+  }
+
+  // ── Log panel ─────────────────────────────────────────────────────────────
+  function log(msg, type = '') {
+    const panel = document.getElementById('log-panel');
+    const ts = new Date().toLocaleTimeString();
+    const p = document.createElement('p');
+    p.className = type;
+    p.textContent = `[${ts}] ${msg}`;
+    panel.appendChild(p);
+    panel.scrollTop = panel.scrollHeight;
+    // Keep last 50 lines
+    while (panel.children.length > 50) panel.removeChild(panel.firstChild);
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function timeAgo(date) {
+    const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.floor(secs/60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs/3600)}h ago`;
+    return `${Math.floor(secs/86400)}d ago`;
+  }
+
+  // ── Load config ───────────────────────────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const res = await fetch('/config');
+      if (res.ok) {
+        const cfg = await res.json();
+        scanIntervalMinutes = cfg.scan_interval_minutes || 15;
+      }
+    } catch(e) { /* use default */ }
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    await loadConfig();
+    await loadDeals();
+    connectWS();
+    startCountdown(scanIntervalMinutes * 60);
+    log('Dashboard initialised', 'info');
+  }
+
+  init();
+</script>
+</body>
+</html>
