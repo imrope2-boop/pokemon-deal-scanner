@@ -30,6 +30,7 @@ SUBREDDITS = [
     "pkmntcg",
     "PokemonCardTrader",
     "Pokemoncard",
+    "VintageCardsMarket",
 ]
 
 SALE_FLAIR = [
@@ -43,6 +44,12 @@ SALE_PATTERNS = [
     r'collection\s+dump', r'price\s*drop', r'clearing',
     r'must\s+sell', r'quick\s+sale', r'moving\s+sale',
     r'\[H\]', r'\[W\]',
+]
+
+CARD_SHOW_KEYWORDS = [
+    "card show", "trade show", "convention", "nscc", "nationals",
+    "regionals", "locals", "lgs", "local game store", "table",
+    "vendor table", "selling at", "booth",
 ]
 
 _oauth_token = None
@@ -287,6 +294,11 @@ def _parse_post(post_data: Dict):
         return None
 
     tags = build_tags(title, body, categories, tier)
+    # Detect card show / in-person event listings
+    _text_lower = (title + " " + body).lower()
+    if any(kw in _text_lower for kw in CARD_SHOW_KEYWORDS):
+        if "card_show" not in tags:
+            tags.append("card_show")
 
     images = []
     post_url = post_data.get("url", "")
