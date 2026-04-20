@@ -63,9 +63,6 @@ def scan_tcgplayer() -> List[Deal]:
     except Exception as e:
         print(f"⚠️  TCGPlayer scan error: {e}")
 
-    # Add some demo/sample data if real scraping fails (development mode)
-    if not deals:
-        deals = _get_sample_tcg_deals()
 
     print(f"✅ TCGPlayer scan complete: {len(deals)} deals found")
     return deals
