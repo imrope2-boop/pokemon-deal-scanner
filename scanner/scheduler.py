@@ -1,6 +1,6 @@
 """
 Scan Scheduler — coordinates all platform scanners and saves results
-Runs on configurable intervals using APScheduler
+Scanning is manual-only (triggered via POST /api/scan).
 """
 import json
 import time
@@ -13,6 +13,8 @@ from database.db import save_deal, log_scan, record_price_history
 from scanner.reddit_scanner import scan_reddit
 from scanner.ebay_scanner import scan_ebay
 from scanner.tcgplayer_scanner import scan_tcgplayer
+from scanner.ebay_api_scanner import scan_ebay_api
+from scanner.international_scanner import scan_yahoo_japan, scan_mercari_japan, scan_kijiji
 
 # Load config
 try:
@@ -34,125 +36,97 @@ def register_new_deal_callback(fn: Callable):
 
 def _notify_new_deal(deal: Deal):
     """Notify all registered callbacks about a new deal"""
-    for fn in _new_deal_callbacks:
+    for cb in _new_deal_callbacks:
         try:
-            fn(deal)
+            cb(deal)
         except Exception as e:
-            print(f"⚠️  Callback error: {e}")
+            print(f"[Scheduler] Callback error: {e}")
 
 
-def run_scan(platforms: Optional[List[str]] = None) -> dict:
+async def run_scan() -> dict:
     """
-    Run a full scan across all enabled platforms.
-    Returns summary dict with counts per platform.
+    Run all enabled platform scanners and save results.
+    Returns a summary dict with counts per platform.
     """
     start_time = time.time()
-    summary = {
-        "started_at": datetime.utcnow().isoformat(),
-        "platforms": {},
-        "total_found": 0,
-        "total_new": 0,
-        "great_deals": [],
-        "good_deals": [],
-        "decent_deals": []
+    all_deals: List[Deal] = []
+    summary = {}
+
+    scanners = [
+        # North America — Reddit
+        ("reddit",         scan_reddit,        PLATFORMS.get("reddit",  {}).get("enabled", True)),
+        # North America — eBay HTML scraping (legacy, may be blocked)
+        ("ebay_html",      scan_ebay,           PLATFORMS.get("ebay",    {}).get("enabled", False)),
+        # North America — eBay Finding API (activates automatically when EBAY_APP_ID is set)
+        ("ebay_api",       scan_ebay_api,       True),
+        # North America — TCGPlayer
+        ("tcgplayer",      scan_tcgplayer,      PLATFORMS.get("tcgplayer", {}).get("enabled", True)),
+        # International — Yahoo Auctions Japan (via Buyee proxy)
+        ("yahoo_japan",    scan_yahoo_japan,    PLATFORMS.get("yahoo_japan",    {}).get("enabled", True)),
+        # International — Mercari Japan (via Buyee proxy)
+        ("mercari_japan",  scan_mercari_japan,  PLATFORMS.get("mercari_japan",  {}).get("enabled", True)),
+        # Canada — Kijiji
+        ("kijiji",         scan_kijiji,         PLATFORMS.get("kijiji",         {}).get("enabled", True)),
+    ]
+
+    for name, scanner_fn, enabled in scanners:
+        if not enabled:
+            print(f"[Scheduler] Skipping {name} (disabled in config)")
+            summary[name] = {"status": "disabled", "new_deals": 0}
+            continue
+
+        try:
+            print(f"[Scheduler] Running {name} scanner...")
+            t0 = time.time()
+
+            # Run synchronous scanners in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            deals = await loop.run_in_executor(None, scanner_fn)
+
+            elapsed = round(time.time() - t0, 1)
+            new_count = 0
+
+            for deal in deals:
+                try:
+                    is_new = save_deal(deal)
+                    if is_new:
+                        new_count += 1
+                        all_deals.append(deal)
+                        _notify_new_deal(deal)
+                    # Always try to record price history
+                    try:
+                        record_price_history(deal)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(f"[Scheduler] Error saving deal {deal.id}: {e}")
+
+            print(f"[Scheduler] {name}: {len(deals)} found, {new_count} new ({elapsed}s)")
+            summary[name] = {"status": "ok", "found": len(deals), "new_deals": new_count, "elapsed_s": elapsed}
+
+        except Exception as e:
+            print(f"[Scheduler] {name} scanner failed: {e}")
+            summary[name] = {"status": "error", "error": str(e), "new_deals": 0}
+
+    total_elapsed = round(time.time() - start_time, 1)
+    total_new = sum(v.get("new_deals", 0) for v in summary.values())
+
+    # Log the scan
+    try:
+        log_scan(
+            platforms=list(summary.keys()),
+            deals_found=total_new,
+            duration_seconds=total_elapsed,
+        )
+    except Exception as e:
+        print(f"[Scheduler] log_scan error: {e}")
+
+    print(f"[Scheduler] Scan complete: {total_new} new deals in {total_elapsed}s")
+
+    return {
+        "status": "ok",
+        "total_new_deals": total_new,
+        "total_elapsed_s": total_elapsed,
+        "platforms": summary,
+        "timestamp": datetime.utcnow().isoformat(),
     }
-
-    print(f"\n{'='*50}")
-    print(f"🚀 Starting scan at {datetime.utcnow().strftime('%H:%M:%S UTC')}")
-    print(f"{'='*50}")
-
-    # ── Reddit ────────────────────────────────────────────────────
-    if (platforms is None or "reddit" in platforms) and PLATFORMS.get("reddit", {}).get("enabled", True):
-        t0 = time.time()
-        try:
-            reddit_deals = scan_reddit()
-            new_count = 0
-            for deal in reddit_deals:
-                is_new = save_deal(deal.to_dict())
-                if is_new:
-                    new_count += 1
-                    _notify_new_deal(deal)
-                    _categorize_deal(summary, deal)
-
-            log_scan("reddit", len(reddit_deals), new_count, duration=time.time()-t0)
-            summary["platforms"]["reddit"] = {"found": len(reddit_deals), "new": new_count}
-            summary["total_found"] += len(reddit_deals)
-            summary["total_new"] += new_count
-        except Exception as e:
-            print(f"❌ Reddit scan failed: {e}")
-            log_scan("reddit", 0, 0, errors=str(e))
-            summary["platforms"]["reddit"] = {"error": str(e)}
-
-    # ── eBay ──────────────────────────────────────────────────────
-    if (platforms is None or "ebay" in platforms) and PLATFORMS.get("ebay", {}).get("enabled", True):
-        t0 = time.time()
-        try:
-            ebay_deals = scan_ebay()
-            new_count = 0
-            for deal in ebay_deals:
-                is_new = save_deal(deal.to_dict())
-                if is_new:
-                    new_count += 1
-                    _notify_new_deal(deal)
-                    _categorize_deal(summary, deal)
-
-            log_scan("ebay", len(ebay_deals), new_count, duration=time.time()-t0)
-            summary["platforms"]["ebay"] = {"found": len(ebay_deals), "new": new_count}
-            summary["total_found"] += len(ebay_deals)
-            summary["total_new"] += new_count
-        except Exception as e:
-            print(f"❌ eBay scan failed: {e}")
-            log_scan("ebay", 0, 0, errors=str(e))
-            summary["platforms"]["ebay"] = {"error": str(e)}
-
-    # ── TCGPlayer ─────────────────────────────────────────────────
-    if (platforms is None or "tcgplayer" in platforms) and PLATFORMS.get("tcgplayer", {}).get("enabled", True):
-        t0 = time.time()
-        try:
-            tcg_deals = scan_tcgplayer()
-            new_count = 0
-            for deal in tcg_deals:
-                is_new = save_deal(deal.to_dict())
-                if is_new:
-                    new_count += 1
-                    _notify_new_deal(deal)
-                    _categorize_deal(summary, deal)
-
-            log_scan("tcgplayer", len(tcg_deals), new_count, duration=time.time()-t0)
-            summary["platforms"]["tcgplayer"] = {"found": len(tcg_deals), "new": new_count}
-            summary["total_found"] += len(tcg_deals)
-            summary["total_new"] += new_count
-        except Exception as e:
-            print(f"❌ TCGPlayer scan failed: {e}")
-            log_scan("tcgplayer", 0, 0, errors=str(e))
-            summary["platforms"]["tcgplayer"] = {"error": str(e)}
-
-    duration = round(time.time() - start_time, 1)
-    summary["duration_seconds"] = duration
-    summary["finished_at"] = datetime.utcnow().isoformat()
-
-    print(f"\n📊 Scan complete in {duration}s")
-    print(f"   Total found: {summary['total_found']} | New: {summary['total_new']}")
-    print(f"   🟢 Great: {len(summary['great_deals'])} | 🟡 Good: {len(summary['good_deals'])} | 🔴 Decent: {len(summary['decent_deals'])}")
-    print(f"{'='*50}\n")
-
-    return summary
-
-
-def _categorize_deal(summary: dict, deal: Deal):
-    """Add a new deal to the appropriate tier bucket in summary"""
-    deal_info = {
-        "id": deal.id,
-        "title": deal.title[:60],
-        "platform": deal.platform.value,
-        "price": deal.asking_price,
-        "score": deal.score,
-        "profit": round(deal.price_breakdown.estimated_profit, 2)
-    }
-
-    if deal.tier == DealTier.GREAT:
-        summary["great_deals"].append(deal_info)
-    elif deal.tier == DealTier.GOOD:
-        summary["good_deals"].append(deal_info)
-    elif deal.tier == DealTier.DECENT:
-        summary["decent_deals"].append(deal_info)
