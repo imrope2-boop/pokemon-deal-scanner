@@ -149,12 +149,7 @@ def is_relevant_post(title: str, description: str, price: Optional[float]) -> bo
     if not has_cards:
         return False
 
-    # Must have a price or offer language
-    if price is None:
-        has_offer = any(k in combined for k in ["obo", "offer", "make offer", "mo", "negotiable", "asking"])
-        if not has_offer:
-            return False
-
+    # Price is preferred but not required — don't filter out make-offer style posts
     return True
 
 
@@ -335,7 +330,7 @@ def score_deal(
     elif (score >= 4.5 or below_pct >= 20 or
           (price_per_card and price_per_card <= 0.08 and card_count and card_count >= 50)):
         tier = DealTier.GOOD
-    elif score >= 2.5 or below_pct >= 10:
+    elif score >= 1.0 or below_pct >= 5:
         tier = DealTier.DECENT
     else:
         tier = DealTier.NO_DEAL
