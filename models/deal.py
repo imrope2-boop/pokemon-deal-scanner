@@ -22,6 +22,7 @@ class Platform(str, Enum):
     YAHOO_JAPAN = "yahoo_japan"
     MERCARI_JAPAN = "mercari_japan"
     KIJIJI = "kijiji"
+    CAROUSELL = "carousell"
     OTHER = "other"
 
 
