@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Queryh
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,7 +65,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 if os.path.exists("dashboard"):
     app.mount("/static", StaticFiles(directory="dashboard"), name="static")
 
-@app.get("/", response_class=HTMLRESponse)
+@app.get("/", response_class=HTMLResponse)
 async def dashboard():
     if os.path.exists("dashboard/index.html"):
         with open("dashboard/index.html") as f: return HTMLResponse(f.read())
