@@ -15,7 +15,7 @@ from scanner.reddit_scanner import scan_reddit
 from scanner.ebay_scanner import scan_ebay
 from scanner.tcgplayer_scanner import scan_tcgplayer
 from scanner.ebay_api_scanner import scan_ebay_api
-from scanner.international_scanner import scan_yahoo_japan, scan_mercari_japan, scan_kijiji
+from scanner.international_scanner import scan_yahoo_japan, scan_mercari_japan, scan_kijiji, scan_surugaya, scan_carousell
 
 # Load config
 try:
@@ -68,6 +68,10 @@ async def run_scan() -> dict:
         ("mercari_japan",  scan_mercari_japan,  PLATFORMS.get("mercari_japan",  {}).get("enabled", True)),
         # Canada — Kijiji
         ("kijiji",         scan_kijiji,         PLATFORMS.get("kijiji",         {}).get("enabled", True)),
+        # Japan — Surugaya (direct, ships internationally)
+        ("surugaya",       scan_surugaya,       PLATFORMS.get("surugaya",       {}).get("enabled", True)),
+        # Singapore — Carousell
+        ("carousell",      scan_carousell,      PLATFORMS.get("carousell",      {}).get("enabled", True)),
     ]
 
     for name, scanner_fn, enabled in scanners:
