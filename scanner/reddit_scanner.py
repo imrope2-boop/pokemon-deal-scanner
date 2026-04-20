@@ -135,60 +135,83 @@ def _fetch_subreddit_oauth(subreddit: str, limit: int, token: str) -> List[Dict]
 
 
 def _fetch_subreddit_pullpush(subreddit: str, limit: int = 100) -> List[Dict]:
-    """Fetch posts via PullPush.io — Reddit data mirror, no auth needed, works from server IPs"""
+    """Fetch latest posts via PullPush.io — Reddit data mirror, no auth, works from server IPs.
+    Fetches recent posts without a query filter; sale detection is done locally."""
     posts = []
-    # Search for sale-related posts
-    search_queries = ["WTS OR selling OR FS OR bulk lot OR collection", "WTT OR trade OR clearing"]
-    seen_ids = set()
-
-    for query in search_queries:
-        if len(posts) >= limit:
-            break
-        try:
-            resp = requests.get(
-                "https://api.pullpush.io/reddit/search/submission/",
-                params={
-                    "subreddit": subreddit,
-                    "q": query,
-                    "size": min(100, limit),
-                    "sort_type": "created_utc",
-                    "order": "desc",
-                },
-                timeout=15,
-                headers={"User-Agent": "PokemonDealScanner/1.0"}
-            )
-            print(f"  \U0001f4f6 r/{subreddit} PullPush ({query[:20]}): HTTP {resp.status_code}")
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data.get("data", [])
-                for item in items:
-                    post_id = item.get("id", "")
-                    if post_id in seen_ids:
-                        continue
-                    seen_ids.add(post_id)
-                    permalink = item.get("permalink", "")
-                    if permalink and not permalink.startswith("http"):
-                        permalink = f"https://reddit.com{permalink}"
-                    posts.append({
-                        "title": item.get("title", ""),
-                        "selftext": item.get("selftext", ""),
-                        "url": item.get("url", ""),
-                        "permalink": item.get("permalink", ""),
-                        "link_flair_text": item.get("link_flair_text") or "",
-                        "author": item.get("author", "unknown"),
-                        "created_utc": item.get("created_utc", time.time()),
-                        "preview": None,
-                    })
-            else:
-                print(f"  \u26a0\ufe0f  PullPush HTTP {resp.status_code} for r/{subreddit}")
-        except Exception as e:
-            print(f"  \u26a0\ufe0f  PullPush error r/{subreddit}: {e}")
-        time.sleep(0.5)
-
-    print(f"  \U0001f4c4 Fetched {len(posts)} posts via PullPush from r/{subreddit}")
+    try:
+        resp = requests.get(
+            "https://api.pullpush.io/reddit/search/submission/",
+            params={
+                "subreddit": subreddit,
+                "size": min(limit, 100),
+                "sort_type": "created_utc",
+                "order": "desc",
+            },
+            timeout=20,
+            headers={"User-Agent": "PokemonDealScanner/1.0"}
+        )
+        print(f"  \U0001f4f6 r/{subreddit} PullPush: HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("data", [])
+            for item in items:
+                permalink = item.get("permalink", "")
+                posts.append({
+                    "title": item.get("title", ""),
+                    "selftext": item.get("selftext", ""),
+                    "url": item.get("url", ""),
+                    "permalink": permalink,
+                    "link_flair_text": item.get("link_flair_text") or "",
+                    "author": item.get("author", "unknown"),
+                    "created_utc": item.get("created_utc", time.time()),
+                    "preview": None,
+                })
+            print(f"  \U0001f4c4 Got {len(items)} posts via PullPush from r/{subreddit}")
+        else:
+            print(f"  \u26a0\ufe0f  PullPush HTTP {resp.status_code} for r/{subreddit}")
+            # Fallback to Arctic Shift
+            posts = _fetch_subreddit_arctic(subreddit, limit)
+    except Exception as e:
+        print(f"  \u26a0\ufe0f  PullPush error r/{subreddit}: {e}")
+        posts = _fetch_subreddit_arctic(subreddit, limit)
     return posts
 
 
+def _fetch_subreddit_arctic(subreddit: str, limit: int = 100) -> List[Dict]:
+    """Fallback: Arctic Shift Reddit archive API — also no auth, good recent coverage"""
+    posts = []
+    try:
+        resp = requests.get(
+            "https://arctic-shift.photon-reddit.com/api/posts/search",
+            params={
+                "subreddit": subreddit,
+                "limit": min(limit, 100),
+                "sort": "created_utc",
+                "order": "desc",
+            },
+            timeout=15,
+            headers={"User-Agent": "PokemonDealScanner/1.0"}
+        )
+        print(f"  \U0001f4f6 r/{subreddit} ArcticShift: HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("data", [])
+            for item in items:
+                permalink = item.get("permalink", "")
+                posts.append({
+                    "title": item.get("title", ""),
+                    "selftext": item.get("selftext", item.get("body", "")),
+                    "url": item.get("url", ""),
+                    "permalink": permalink,
+                    "link_flair_text": item.get("link_flair_text") or "",
+                    "author": item.get("author", "unknown"),
+                    "created_utc": item.get("created_utc", time.time()),
+                    "preview": None,
+                })
+            print(f"  \U0001f4c4 Got {len(items)} posts via ArcticShift from r/{subreddit}")
+    except Exception as e:
+        print(f"  \u26a0\ufe0f  ArcticShift error r/{subreddit}: {e}")
+    return posts
 def _fetch_subreddit_json(subreddit: str, limit: int = 100) -> List[Dict]:
     """Public JSON fallback — often 403 from server IPs, kept for local dev"""
     posts = []
