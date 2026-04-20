@@ -1,6 +1,6 @@
 """
 Reddit Scanner — scrapes Pokemon TCG trading subreddits for bulk deals
-Uses PRAW if credentials set, then app-only OAuth (bypasses IP blocks), then public JSON
+Uses PRAW > app-only OAuth > PullPush.io mirror (no auth, server-IP friendly) > public JSON
 """
 import os
 import re
@@ -45,13 +45,11 @@ SALE_PATTERNS = [
     r'\[H\]', r'\[W\]',
 ]
 
-# Module-level OAuth token cache
 _oauth_token = None
 _oauth_token_expiry = 0
 
 
 def _make_reddit_client():
-    """Create PRAW Reddit client from env vars"""
     if not PRAW_AVAILABLE:
         return None
     client_id = os.getenv("REDDIT_CLIENT_ID")
@@ -69,7 +67,6 @@ def _make_reddit_client():
 
 
 def _get_oauth_token():
-    """Get or refresh app-only OAuth token — uses oauth.reddit.com, not IP-blocked"""
     global _oauth_token, _oauth_token_expiry
     if _oauth_token and time.time() < _oauth_token_expiry:
         return _oauth_token
@@ -91,17 +88,16 @@ def _get_oauth_token():
             _oauth_token = data.get("access_token")
             expires_in = data.get("expires_in", 3600)
             _oauth_token_expiry = time.time() + expires_in - 60
-            print(f"\u2705 Reddit OAuth token obtained (valid for {expires_in}s)")
+            print(f"\u2705 Reddit OAuth token obtained")
             return _oauth_token
         else:
-            print(f"\u26a0\ufe0f  OAuth token failed: HTTP {resp.status_code} {resp.text[:120]}")
+            print(f"\u26a0\ufe0f  OAuth failed: HTTP {resp.status_code}")
     except Exception as e:
-        print(f"\u26a0\ufe0f  OAuth token error: {e}")
+        print(f"\u26a0\ufe0f  OAuth error: {e}")
     return None
 
 
 def _fetch_subreddit_oauth(subreddit: str, limit: int, token: str) -> List[Dict]:
-    """Fetch posts via oauth.reddit.com — bypasses Cloudflare IP blocks on www.reddit.com"""
     posts = []
     user_agent = os.getenv("REDDIT_USER_AGENT", "PokemonDealScanner/1.0")
     headers = {"Authorization": f"Bearer {token}", "User-Agent": user_agent}
@@ -128,10 +124,8 @@ def _fetch_subreddit_oauth(subreddit: str, limit: int, token: str) -> List[Dict]
             elif resp.status_code == 401:
                 global _oauth_token
                 _oauth_token = None
-                print(f"\u26a0\ufe0f  Token expired for r/{subreddit}, will refresh next scan")
                 break
             else:
-                print(f"\u26a0\ufe0f  OAuth HTTP {resp.status_code} for r/{subreddit}")
                 break
         except Exception as e:
             print(f"\u26a0\ufe0f  OAuth error r/{subreddit}: {e}")
@@ -140,49 +134,83 @@ def _fetch_subreddit_oauth(subreddit: str, limit: int, token: str) -> List[Dict]
     return posts
 
 
-def _fetch_subreddit_json(subreddit: str, limit: int = 100) -> List[Dict]:
-    """Fetch posts via public JSON API — often 403 from server IPs"""
+def _fetch_subreddit_pullpush(subreddit: str, limit: int = 100) -> List[Dict]:
+    """Fetch posts via PullPush.io — Reddit data mirror, no auth needed, works from server IPs"""
     posts = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-    }
-    after = None
-    fetched = 0
-    while fetched < limit:
-        batch = min(100, limit - fetched)
-        params = {"limit": batch, "raw_json": 1}
-        if after:
-            params["after"] = after
+    # Search for sale-related posts
+    search_queries = ["WTS OR selling OR FS OR bulk lot OR collection", "WTT OR trade OR clearing"]
+    seen_ids = set()
+
+    for query in search_queries:
+        if len(posts) >= limit:
+            break
         try:
-            resp = requests.get(f"https://www.reddit.com/r/{subreddit}/new.json",
-                                headers=headers, params=params, timeout=15)
-            print(f"  \U0001f4f6 r/{subreddit} /new: HTTP {resp.status_code}")
+            resp = requests.get(
+                "https://api.pullpush.io/reddit/search/submission/",
+                params={
+                    "subreddit": subreddit,
+                    "q": query,
+                    "size": min(100, limit),
+                    "sort_type": "created_utc",
+                    "order": "desc",
+                },
+                timeout=15,
+                headers={"User-Agent": "PokemonDealScanner/1.0"}
+            )
+            print(f"  \U0001f4f6 r/{subreddit} PullPush ({query[:20]}): HTTP {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
-                children = data.get("data", {}).get("children", [])
-                for child in children:
-                    posts.append(child.get("data", {}))
-                fetched += len(children)
-                after = data.get("data", {}).get("after")
-                if not after or not children:
-                    break
-            elif resp.status_code == 429:
-                print(f"\u26a0\ufe0f  Rate limited on r/{subreddit}, waiting 10s...")
-                time.sleep(10)
-                break
+                items = data.get("data", [])
+                for item in items:
+                    post_id = item.get("id", "")
+                    if post_id in seen_ids:
+                        continue
+                    seen_ids.add(post_id)
+                    permalink = item.get("permalink", "")
+                    if permalink and not permalink.startswith("http"):
+                        permalink = f"https://reddit.com{permalink}"
+                    posts.append({
+                        "title": item.get("title", ""),
+                        "selftext": item.get("selftext", ""),
+                        "url": item.get("url", ""),
+                        "permalink": item.get("permalink", ""),
+                        "link_flair_text": item.get("link_flair_text") or "",
+                        "author": item.get("author", "unknown"),
+                        "created_utc": item.get("created_utc", time.time()),
+                        "preview": None,
+                    })
             else:
-                print(f"\u26a0\ufe0f  HTTP {resp.status_code} for r/{subreddit}")
-                break
+                print(f"  \u26a0\ufe0f  PullPush HTTP {resp.status_code} for r/{subreddit}")
         except Exception as e:
-            print(f"\u26a0\ufe0f  Error fetching r/{subreddit}: {e}")
-            break
+            print(f"  \u26a0\ufe0f  PullPush error r/{subreddit}: {e}")
+        time.sleep(0.5)
+
+    print(f"  \U0001f4c4 Fetched {len(posts)} posts via PullPush from r/{subreddit}")
+    return posts
+
+
+def _fetch_subreddit_json(subreddit: str, limit: int = 100) -> List[Dict]:
+    """Public JSON fallback — often 403 from server IPs, kept for local dev"""
+    posts = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+    }
+    try:
+        resp = requests.get(f"https://www.reddit.com/r/{subreddit}/new.json",
+                            headers=headers, params={"limit": 100, "raw_json": 1}, timeout=15)
+        print(f"  \U0001f4f6 r/{subreddit} /new: HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            for child in data.get("data", {}).get("children", []):
+                posts.append(child.get("data", {}))
+    except Exception as e:
+        print(f"  \u26a0\ufe0f  JSON error r/{subreddit}: {e}")
     print(f"  \U0001f4c4 Fetched {len(posts)} posts from r/{subreddit}")
     return posts
 
 
 def _is_sale_post(title: str, flair: str = "") -> bool:
-    """Check if post is a for-sale/trade post"""
     combined = f"{flair} {title}".lower()
     if any(s in combined for s in SALE_FLAIR):
         return True
@@ -196,10 +224,11 @@ def _is_sale_post(title: str, flair: str = "") -> bool:
 
 
 def _parse_post(post_data: Dict):
-    """Parse a Reddit post into a Deal object"""
     title = post_data.get("title", "")
     body = post_data.get("selftext", "")
-    permalink = f"https://reddit.com{post_data.get('permalink', '')}"
+    permalink = post_data.get("permalink", "")
+    if permalink and not permalink.startswith("http"):
+        permalink = f"https://reddit.com{permalink}"
     flair = post_data.get("link_flair_text") or ""
     author = post_data.get("author", "unknown")
     created_utc = post_data.get("created_utc", time.time())
@@ -284,8 +313,8 @@ def _parse_post(post_data: Dict):
 def scan_reddit(limit_per_sub: int = 100) -> List[Deal]:
     """
     Main Reddit scanner.
-    Priority: PRAW > app-only OAuth (oauth.reddit.com) > public JSON fallback.
-    Set REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET in Railway env vars to enable OAuth.
+    Priority: PRAW > app-only OAuth > PullPush.io (no auth needed) > public JSON.
+    PullPush.io works from Railway server IPs without any credentials.
     """
     deals = []
     reddit = _make_reddit_client()
@@ -294,9 +323,9 @@ def scan_reddit(limit_per_sub: int = 100) -> List[Deal]:
     if not reddit:
         oauth_token = _get_oauth_token()
         if oauth_token:
-            print("\u2705 Using Reddit app-only OAuth (oauth.reddit.com — bypasses IP blocks)")
+            print("\u2705 Using Reddit app-only OAuth")
         else:
-            print("\u26a0\ufe0f  No Reddit credentials — set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in Railway Variables")
+            print("\U0001f4e1 No Reddit credentials — using PullPush.io mirror (no auth needed)")
 
     for subreddit in SUBREDDITS:
         print(f"\U0001f4e1 r/{subreddit}...")
@@ -318,11 +347,12 @@ def scan_reddit(limit_per_sub: int = 100) -> List[Deal]:
                     })
             except Exception as e:
                 print(f"\u26a0\ufe0f  PRAW error on r/{subreddit}: {e}")
-                posts = _fetch_subreddit_oauth(subreddit, limit_per_sub, oauth_token) if oauth_token else _fetch_subreddit_json(subreddit, limit_per_sub)
+                posts = _fetch_subreddit_pullpush(subreddit, limit_per_sub)
         elif oauth_token:
             posts = _fetch_subreddit_oauth(subreddit, limit_per_sub, oauth_token)
         else:
-            posts = _fetch_subreddit_json(subreddit, limit_per_sub)
+            # PullPush.io — works from server IPs, no auth needed
+            posts = _fetch_subreddit_pullpush(subreddit, limit_per_sub)
 
         n_sale = n_price = sub_deals = 0
         for post_data in posts:
