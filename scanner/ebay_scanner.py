@@ -1,6 +1,6 @@
 """
 eBay Scanner — searches eBay for bulk Pokemon card listings
-Uses eBay's public search pages (no API key required for basic scraping)
+Sorted by newest first, all conditions included (bulk is often listed as Used)
 """
 import re
 import hashlib
@@ -14,15 +14,43 @@ from models.deal import Deal, Platform, DealTier, CardCategory, PriceBreakdown
 from utils.deal_scorer import detect_categories, is_relevant_post, score_deal, build_tags
 from pricing.price_engine import estimate_lot_value, _extract_card_count
 
+# Expanded search terms covering: chase sets, desperation sellers,
+# vintage, unsearched, and generic bulk
 EBAY_SEARCH_TERMS = [
+    # Generic bulk
     "pokemon cards bulk lot",
-    "pokemon card collection dump",
-    "pokemon bulk holo lot",
-    "pokemon vintage wotc bulk",
-    "pokemon cards mixed lot 500",
-    "pokemon cards mixed lot 1000",
-    "pokemon bulk reverse holo",
-    "pokemon base set lot bulk",
+    "pokemon bulk mixed lot",
+    "pokemon card collection lot",
+    "pokemon cards job lot",
+    "pokemon collection dump",
+    # Chase sets
+    "hidden fates bulk lot",
+    "shining fates bulk lot",
+    "evolving skies bulk lot",
+    "pokemon 151 bulk lot",
+    "crown zenith bulk lot",
+    "prismatic evolutions bulk",
+    "pokemon celebrations bulk",
+    "champions path bulk lot",
+    # Vintage / WOTC
+    "pokemon base set lot",
+    "pokemon wotc collection lot",
+    "pokemon 1st edition lot",
+    "pokemon vintage cards lot",
+    "pokemon neo genesis lot",
+    # Desperation / opportunity sellers
+    "pokemon cards quick sale",
+    "pokemon collection clearing",
+    "pokemon cards unsearched lot",
+    "pokemon bulk unweighed",
+    "pokemon inherited collection",
+    "pokemon cards moving sale",
+    # Holo focused
+    "pokemon holo lot bulk",
+    "pokemon reverse holo lot",
+    # High card count
+    "pokemon 500 cards lot",
+    "pokemon 1000 cards lot",
 ]
 
 HEADERS = {
@@ -32,70 +60,71 @@ HEADERS = {
 }
 
 
-def _build_ebay_url(search_term: str, max_price: int = 500, min_price: int = 5) -> str:
-    """Build eBay search URL for Buy It Now listings, sorted by newest"""
+def _build_ebay_url(search_term: str, max_price: int = 800, min_price: int = 5) -> str:
+    """
+    Build eBay search URL for Buy It Now listings, sorted by newest.
+    No condition filter — bulk lots are often listed as Used/Acceptable.
+    """
     base = "https://www.ebay.com/sch/i.html"
     encoded = search_term.replace(" ", "+")
     return (
         f"{base}?_nkw={encoded}"
-        f"&_sop=10"         # Sort: newest first
+        f"&_sop=10"         # Sort: newest first — recency is key
         f"&LH_BIN=1"        # Buy It Now only
-        f"&LH_ItemCondition=1000|2500|3000"  # New, Like New, Very Good
         f"&_udlo={min_price}"
         f"&_udhi={max_price}"
-        f"&_ipg=48"         # 48 items per page
+        f"&_ipg=60"         # 60 items per page
+        # No condition filter — include New, Used, Acceptable, etc.
     )
 
 
 def _parse_ebay_listing(item) -> Optional[Dict]:
-    """Parse a single eBay search result item (BeautifulSoup tag)"""
+    """Parse a single eBay search result item"""
     try:
-        # Title
         title_el = item.select_one(".s-item__title")
         if not title_el:
             return None
         title = title_el.get_text(strip=True)
-        if title == "Shop on eBay":  # Sponsored placeholder
+        if title == "Shop on eBay":
             return None
 
-        # URL
         link_el = item.select_one("a.s-item__link")
         url = link_el["href"].split("?")[0] if link_el else None
         if not url:
             return None
 
-        # Price
         price_el = item.select_one(".s-item__price")
         price_text = price_el.get_text(strip=True) if price_el else ""
-        # Handle price ranges — take the lower bound
         price_match = re.search(r'\$?([\d,]+\.?\d*)', price_text.replace(",", ""))
         if not price_match:
             return None
         price = float(price_match.group(1))
+        if price < 1.0:
+            return None
 
-        # Shipping
         shipping_el = item.select_one(".s-item__shipping")
         shipping_text = shipping_el.get_text(strip=True) if shipping_el else ""
         free_shipping = "free" in shipping_text.lower()
 
-        # Subtitle / description snippet
         subtitle_el = item.select_one(".s-item__subtitle")
         subtitle = subtitle_el.get_text(strip=True) if subtitle_el else ""
 
-        # Seller info
         seller_el = item.select_one(".s-item__seller-info-text")
         seller = seller_el.get_text(strip=True) if seller_el else "unknown"
 
-        # Image
         img_el = item.select_one("img.s-item__image-img")
         image = img_el.get("src", "") if img_el else ""
+
+        # Condition
+        condition_el = item.select_one(".SECONDARY_INFO")
+        condition = condition_el.get_text(strip=True) if condition_el else ""
 
         return {
             "title": title,
             "url": url,
             "price": price,
             "free_shipping": free_shipping,
-            "description": subtitle,
+            "description": f"{subtitle} {condition}".strip(),
             "seller": seller,
             "image": image
         }
@@ -123,10 +152,13 @@ def _listing_to_deal(listing: Dict) -> Optional[Deal]:
         estimated_market_value=valuation["estimated_market_value"],
         card_count=card_count,
         categories=categories,
-        price_breakdown=valuation
+        price_breakdown=valuation,
+        title=title,
+        description=desc
     )
 
-    if tier == DealTier.NO_DEAL and score < 3:
+    # Show DECENT and above — cast a wide net
+    if tier == DealTier.NO_DEAL and score < 2.0:
         return None
 
     tags = build_tags(title, desc, categories, tier)
@@ -142,7 +174,7 @@ def _listing_to_deal(listing: Dict) -> Optional[Deal]:
         card_count=card_count,
         resale_rate=valuation.get("resale_rate", "unknown"),
         market_volatility=valuation.get("market_volatility", "unknown"),
-        resale_multiplier=valuation.get("resale_multiplier", 1.8),
+        resale_multiplier=valuation.get("resale_multiplier", 2.0),
         net_profit_after_fees=valuation.get("net_profit_after_fees", 0)
     )
 
@@ -167,44 +199,45 @@ def _listing_to_deal(listing: Dict) -> Optional[Deal]:
     )
 
 
-def scan_ebay(max_price: int = 500) -> List[Deal]:
+def scan_ebay(max_price: int = 800) -> List[Deal]:
     """
-    Main eBay scanner. Returns list of Deal objects.
+    Main eBay scanner. Searches all terms, deduplicates by URL.
     """
     deals = []
     seen_urls = set()
 
     for search_term in EBAY_SEARCH_TERMS:
         url = _build_ebay_url(search_term, max_price)
-        print(f"🔍 eBay: searching '{search_term}'...")
+        print(f"🔍 eBay: '{search_term}'...")
 
         try:
             resp = requests.get(url, headers=HEADERS, timeout=15)
             if resp.status_code != 200:
-                print(f"⚠️  eBay returned {resp.status_code} for '{search_term}'")
+                print(f"⚠️  eBay {resp.status_code} for '{search_term}'")
                 time.sleep(2)
                 continue
 
             soup = BeautifulSoup(resp.text, "lxml")
             items = soup.select(".s-item")
+            found_this_term = 0
 
             for item in items:
                 listing = _parse_ebay_listing(item)
-                if not listing:
-                    continue
-
-                if listing["url"] in seen_urls:
+                if not listing or listing["url"] in seen_urls:
                     continue
                 seen_urls.add(listing["url"])
 
                 deal = _listing_to_deal(listing)
                 if deal:
                     deals.append(deal)
+                    found_this_term += 1
+
+            print(f"   → {found_this_term} deals from '{search_term}'")
 
         except Exception as e:
-            print(f"⚠️  eBay scan error for '{search_term}': {e}")
+            print(f"⚠️  eBay error for '{search_term}': {e}")
 
-        time.sleep(2)  # Polite delay between searches
+        time.sleep(1.5)  # Polite delay
 
-    print(f"✅ eBay scan complete: {len(deals)} deals found")
+    print(f"✅ eBay scan complete: {len(deals)} deals from {len(seen_urls)} unique listings")
     return deals
