@@ -217,10 +217,11 @@ def score_deal(
     score = 0.0
 
     # ── Factor 1: % Below Market (35%) ────────────────────────────
-    if estimated_market_value > 0:
-        below_pct = ((estimated_market_value - asking_price) / estimated_market_value) * 100
-    else:
+    # Treat asking_price <= 1.0 as unpriced — no below-market bonus/penalty
+    if asking_price <= 1.0 or estimated_market_value <= 0:
         below_pct = 0
+    else:
+        below_pct = ((estimated_market_value - asking_price) / estimated_market_value) * 100
 
     if below_pct >= 60:
         market_score = 10.0
