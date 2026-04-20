@@ -3,6 +3,7 @@ Scan Scheduler — coordinates all platform scanners and saves results
 Scanning is manual-only (triggered via POST /api/scan).
 """
 import json
+import dataclasses
 import time
 import asyncio
 from datetime import datetime
@@ -88,7 +89,13 @@ async def run_scan() -> dict:
 
             for deal in deals:
                 try:
-                    is_new = save_deal(deal)
+                    # Convert Deal dataclass to flat dict (PriceBreakdown inlined)
+                    _d = dataclasses.asdict(deal)
+                    _pb = _d.pop("price_breakdown", {})
+                    _pb.pop("asking_price", None)
+                    _pb.pop("card_count", None)
+                    _d.update(_pb)
+                    is_new = save_deal(_d)
                     if is_new:
                         new_count += 1
                         all_deals.append(deal)
