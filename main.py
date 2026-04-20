@@ -95,6 +95,91 @@ async def api_get_config():
         with open("config.json") as f: return json.load(f)
     except: return {}
 
+@app.post("/api/deals/import")
+async def api_import_deals(payload: dict):
+    """
+    Accept deals posted by the browser-based scanner.
+    Expects: { "deals": [{ "title", "url", "price", "platform", "description", "card_count", "image_url" }] }
+    """
+    import hashlib
+    from models.deal import Deal, Platform, DealTier, CardCategory
+    from utils.deal_scorer import score_deal, build_tags, detect_categories
+    from pricing.price_engine import estimate_lot_value
+    from database.db import save_deal
+
+    raw_deals = payload.get("deals", [])
+    saved = 0
+    skipped = 0
+
+    for raw in raw_deals:
+        try:
+            title = str(raw.get("title", "")).strip()
+            url   = str(raw.get("url", "")).strip()
+            price = float(raw.get("price") or 0)
+            platform_str = str(raw.get("platform", "other")).lower()
+            description  = str(raw.get("description", ""))
+            card_count   = int(raw.get("card_count") or 0) or None
+            image_url    = str(raw.get("image_url", ""))
+
+            if not title or not url or price <= 1.0:
+                skipped += 1
+                continue
+
+            try:
+                platform = Platform(platform_str)
+            except ValueError:
+                platform = Platform.OTHER
+
+            deal_id = "bro_" + hashlib.md5(url.encode()).hexdigest()[:12]
+            combined = f"{title} {description}"
+            categories = detect_categories(title, description)
+            valuation  = estimate_lot_value(price, card_count, categories, combined)
+            score, tier = score_deal(
+                asking_price=price,
+                estimated_market_value=valuation["estimated_market_value"],
+                card_count=card_count,
+                categories=categories,
+                price_breakdown=valuation,
+                title=title,
+                description=description,
+            )
+
+            if tier == DealTier.NO_DEAL and score < 2.0:
+                skipped += 1
+                continue
+
+            tags = build_tags(title, description, categories, tier)
+
+            deal = Deal(
+                id=deal_id,
+                title=title,
+                url=url,
+                asking_price=price,
+                estimated_market_value=valuation["estimated_market_value"],
+                platform=platform,
+                score=score,
+                tier=tier,
+                card_count=card_count,
+                categories=categories,
+                tags=tags,
+                description=description[:500],
+                image_url=image_url or None,
+            )
+            if save_deal(deal):
+                saved += 1
+                for cb in connected_websockets:
+                    try:
+                        import json as _json
+                        import dataclasses as _dc
+                        await cb.send_text(_json.dumps({"type": "new_deal", "deal": _dc.asdict(deal)}))
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[Import] Error processing deal: {e}")
+            skipped += 1
+
+    return {"saved": saved, "skipped": skipped, "total": len(raw_deals)}
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat(), "scan_interval_minutes": SCAN_INTERVAL}
