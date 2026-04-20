@@ -44,8 +44,7 @@ async def _delayed_startup_scan():
 async def _run_scan_job():
     global last_scan_summary
     await _broadcast({"type": "scan_started", "time": datetime.utcnow().isoformat()})
-    loop = asyncio.get_event_loop()
-    summary = await loop.run_in_executor(None, run_scan)
+    summary = await run_scan()
     last_scan_summary = summary
     await _broadcast({"type": "scan_complete", "summary": summary})
 
