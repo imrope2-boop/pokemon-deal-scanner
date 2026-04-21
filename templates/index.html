@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ app_name }}</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>{{ app_name }}</h1>
+      <p>Live eBay API deals plus alert-fed deals from closed marketplaces.</p>
+    </div>
+    <div class="status-pill" id="refresh-status">Refreshing…</div>
+  </header>
+
+  <section class="controls">
+    <label>
+      Platform
+      <select id="platform">
+        <option value="">All</option>
+        <option value="ebay">eBay</option>
+        <option value="mercari">Mercari</option>
+        <option value="facebook_marketplace">Facebook Marketplace</option>
+        <option value="whatnot">Whatnot</option>
+        <option value="kijiji">Kijiji</option>
+        <option value="buyee">Buyee / Yahoo Japan</option>
+      </select>
+    </label>
+    <label>
+      Sort
+      <select id="sort_by">
+        <option value="score">Best score</option>
+        <option value="newest">Newest</option>
+        <option value="price_asc">Price low → high</option>
+        <option value="price_desc">Price high → low</option>
+        <option value="count_desc">Most estimated cards</option>
+      </select>
+    </label>
+    <label>
+      Min price
+      <input id="min_price" type="number" min="0" step="1" placeholder="0" />
+    </label>
+    <label>
+      Max price
+      <input id="max_price" type="number" min="0" step="1" placeholder="500" />
+    </label>
+    <button id="apply">Apply</button>
+  </section>
+
+  <section class="status-grid">
+    <div class="panel">
+      <h2>Connector status</h2>
+      <div id="connector-status"></div>
+    </div>
+    <div class="panel">
+      <h2>How this app works</h2>
+      <ul>
+        <li>eBay: official Browse API polling every 90 seconds</li>
+        <li>Mercari / Facebook / Whatnot / Kijiji / Buyee: email alert ingestion — set up saved searches on each platform to email your alerts inbox</li>
+        <li>No silent failures: connector health is shown above</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="deals-header">
+      <h2>Deals</h2>
+      <span id="deal-count"></span>
+    </div>
+    <div id="deals" class="deal-grid"></div>
+  </section>
+
+  <template id="deal-template">
+    <article class="deal-card">
+      <img class="deal-image" alt="listing image" />
+      <div class="deal-content">
+        <div class="deal-meta-row">
+          <span class="platform"></span>
+          <span class="method"></span>
+        </div>
+        <a class="deal-title" target="_blank" rel="noopener noreferrer"></a>
+        <div class="price-row">
+          <strong class="price"></strong>
+          <span class="ppc"></span>
+        </div>
+        <div class="metrics"></div>
+        <div class="timestamps"></div>
+      </div>
+    </article>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
